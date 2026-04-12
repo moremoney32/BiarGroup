@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -H \"X-Figma-Token: figd_Dp4XDFY4fYnb5K1Ol-rLUsKNa_6YBVtRV2p-JxJD\" \"https://api.figma.com/v1/files/ZR5Uj00AU1hlfZ7uayv1oI\")",
+      "Bash(curl:*)",
+      "WebFetch(domain:www.figma.com)",
+      "Bash(python3 -c ':*)",
+      "Bash(node:*)",
+      "Bash(python -m json.tool)",
+      "Bash(python -c ':*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('scripts:', json.dumps\\(d.get\\('scripts',{}\\), indent=2\\)\\); print\\('main:', d.get\\('main',''\\)\\)\")",
+      "Bash(docker compose:*)",
+      "Bash(del:*)"
+    ]
+  }
+}

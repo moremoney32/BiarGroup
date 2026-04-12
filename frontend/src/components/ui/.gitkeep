@@ -1,0 +1,3 @@
+# shadcn/ui components
+# Générer avec : npx shadcn-ui@latest add button card dialog input label select table tabs toast
+# Ne pas modifier manuellement — utiliser la CLI shadcn/ui

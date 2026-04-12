@@ -1,0 +1,62 @@
+{
+  "common": {
+    "loading": "Chargement...",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "create": "Créer",
+    "search": "Rechercher",
+    "export": "Exporter",
+    "import": "Importer",
+    "send": "Envoyer",
+    "confirm": "Confirmer",
+    "back": "Retour",
+    "next": "Suivant",
+    "yes": "Oui",
+    "no": "Non",
+    "actions": "Actions",
+    "status": "Statut",
+    "date": "Date",
+    "name": "Nom",
+    "email": "Email",
+    "phone": "Téléphone",
+    "total": "Total",
+    "noResults": "Aucun résultat"
+  },
+  "auth": {
+    "login": "Connexion",
+    "logout": "Déconnexion",
+    "register": "Créer un compte",
+    "email": "Email",
+    "password": "Mot de passe",
+    "forgotPassword": "Mot de passe oublié ?",
+    "resetPassword": "Réinitialiser le mot de passe"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "callCenter": "B-GOTOCALL",
+    "sms": "B-SMSBULK",
+    "email": "B-EMAIL",
+    "whatsapp": "B-WHATSAPP",
+    "contacts": "Contacts",
+    "reporting": "Rapports",
+    "billing": "Facturation",
+    "settings": "Paramètres",
+    "admin": "Administration"
+  },
+  "campaigns": {
+    "draft": "Brouillon",
+    "scheduled": "Planifié",
+    "sending": "En cours",
+    "completed": "Terminé",
+    "failed": "Échoué",
+    "paused": "Pausé"
+  },
+  "agents": {
+    "available": "Disponible",
+    "busy": "Occupé",
+    "paused": "En pause",
+    "offline": "Hors ligne"
+  }
+}

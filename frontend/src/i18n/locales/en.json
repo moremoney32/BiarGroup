@@ -1,0 +1,62 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "export": "Export",
+    "import": "Import",
+    "send": "Send",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "yes": "Yes",
+    "no": "No",
+    "actions": "Actions",
+    "status": "Status",
+    "date": "Date",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "total": "Total",
+    "noResults": "No results"
+  },
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "register": "Create account",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot password?",
+    "resetPassword": "Reset password"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "callCenter": "B-GOTOCALL",
+    "sms": "B-SMSBULK",
+    "email": "B-EMAIL",
+    "whatsapp": "B-WHATSAPP",
+    "contacts": "Contacts",
+    "reporting": "Reports",
+    "billing": "Billing",
+    "settings": "Settings",
+    "admin": "Administration"
+  },
+  "campaigns": {
+    "draft": "Draft",
+    "scheduled": "Scheduled",
+    "sending": "Sending",
+    "completed": "Completed",
+    "failed": "Failed",
+    "paused": "Paused"
+  },
+  "agents": {
+    "available": "Available",
+    "busy": "Busy",
+    "paused": "On break",
+    "offline": "Offline"
+  }
+}
