@@ -1,0 +1,6 @@
+# Fichiers personnels — ne pas pousser sur GitHub
+CLAUDE.md
+DOCKER_GUIDE.md
+
+# Variables d'environnement — jamais sur GitHub
+.env
