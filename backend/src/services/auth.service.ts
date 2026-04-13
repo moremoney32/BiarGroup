@@ -368,7 +368,7 @@ export const authService = {
   async getMe(userId: number): Promise<User> {
     const [rows] = await pool.execute<RowDataPacket[]>(
       `SELECT id, tenant_id, first_name, last_name, email, phone, role,
-              is_active, email_verified_at, created_at, updated_at, deleted_at
+              is_active, is_email_verified, email_verified_at, created_at, updated_at, deleted_at
        FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
       [userId]
     )
