@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isValidPhoneNumber } from 'libphonenumber-js'
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 
@@ -22,7 +23,6 @@ export const registerStep2Schema = z.object({
   firstName: z.string().min(2, 'Prénom requis (min 2 caractères)'),
   lastName: z.string().min(2, 'Nom requis (min 2 caractères)'),
   email: z.string().email('Adresse email invalide'),
-  // Numéro international — espaces/tirets ignorés, format +XX...
   phone: z
     .string()
     .optional()
@@ -30,11 +30,9 @@ export const registerStep2Schema = z.object({
     .refine(
       (val) => {
         if (!val || val.trim() === '') return true
-        // on retire espaces, tirets, points, parenthèses avant de valider
-        const clean = val.replace(/[\s\-().]/g, '')
-        return /^\+[1-9][0-9]{6,14}$/.test(clean)
+        return isValidPhoneNumber(val)
       },
-      { message: 'Format : +243 81 000 0000 ou +33 6 12 34 56 78' }
+      { message: 'Numéro de téléphone invalide pour ce pays' }
     ),
 })
 

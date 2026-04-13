@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useState, useEffect } from 'react'
+import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Eye, EyeOff, Building2, User, Lock, Mail, Phone, ChevronRight, ChevronLeft, CheckCircle } from 'lucide-react'
+import { Eye, EyeOff, Building2, User, Lock, Mail, ChevronRight, ChevronLeft, CheckCircle } from 'lucide-react'
 import {
   registerStep1Schema,
   registerStep2Schema,
@@ -12,6 +12,8 @@ import {
   type RegisterStep3Data,
 } from '../schemas/auth.schemas'
 import { useAuth } from '../../../hooks/useAuth'
+import { Combobox } from '../../../components/common/Combobox'
+import { PhoneInput } from '../../../components/common/PhoneInput'
 
 type Step1Data = RegisterStep1Data
 type Step2Data = RegisterStep2Data
@@ -32,7 +34,6 @@ const perks = [
 ]
 
 const sectors = ['Banque & Finance', 'Santé', 'Commerce', 'Éducation', 'Gouvernement', 'ONG', 'Télécommunications', 'Autre']
-const countries = ['RD Congo', 'Congo', 'Rwanda', 'Cameroun', 'Côte d\'Ivoire', 'Sénégal', 'Autre']
 
 export default function RegisterPage() {
   const { register: registerUser, isLoading } = useAuth()
@@ -42,10 +43,61 @@ export default function RegisterPage() {
   const [step1Data, setStep1Data] = useState<Partial<Step1Data>>({})
   const [step2Data, setStep2Data] = useState<Partial<Step2Data>>({})
 
+  // ── Pays & villes ────────────────────────────────────────────────────────────
+  const [countryList, setCountryList] = useState<string[]>([])
+  const [cityList, setCityList] = useState<string[]>([])
+  const [citiesLoading, setCitiesLoading] = useState(false)
+
+  // Charge tous les pays au montage (une seule fois)
+  useEffect(() => {
+    fetch('https://countriesnow.space/api/v0.1/countries/capital')
+      .then((r) => r.json())
+      .then((json) => {
+        const names: string[] = (json.data ?? [])
+          .map((d: { name: string }) => d.name)
+          .filter(Boolean)
+          .sort((a: string, b: string) => a.localeCompare(b))
+        setCountryList(names)
+      })
+      .catch(() => {
+        // Fallback minimaliste si l'API est indisponible
+        setCountryList(['RD Congo', 'Congo', 'Rwanda', 'Cameroun', 'Côte d\'Ivoire', 'Sénégal', 'France', 'Belgique'])
+      })
+  }, [])
+
+  // ── Formulaires ───────────────────────────────────────────────────────────────
   const form1 = useForm<Step1Data>({ resolver: zodResolver(registerStep1Schema), defaultValues: step1Data })
   const form2 = useForm<Step2Data>({ resolver: zodResolver(registerStep2Schema), defaultValues: step2Data })
   const form3 = useForm<Step3Data>({ resolver: zodResolver(registerStep3Schema) })
 
+  // Surveille le pays sélectionné pour charger les villes
+  const selectedCountry = form1.watch('country')
+
+  useEffect(() => {
+    if (!selectedCountry) {
+      setCityList([])
+      return
+    }
+    // Reset la ville dès qu'on change de pays
+    form1.setValue('city', '')
+    setCityList([])
+    setCitiesLoading(true)
+
+    fetch('https://countriesnow.space/api/v0.1/countries/cities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ country: selectedCountry }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        const cities: string[] = (json.data ?? []).filter(Boolean).sort()
+        setCityList(cities)
+      })
+      .catch(() => setCityList([]))
+      .finally(() => setCitiesLoading(false))
+  }, [selectedCountry]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Handlers étapes ───────────────────────────────────────────────────────────
   const handleStep1 = form1.handleSubmit((data) => { setStep1Data(data); setStep(2) })
   const handleStep2 = form2.handleSubmit((data) => { setStep2Data(data); setStep(3) })
   const handleStep3 = form3.handleSubmit(async (_data) => {
@@ -56,7 +108,6 @@ export default function RegisterPage() {
         password: _data.password,
         plan: 'free',
       })
-      // La navigation vers /verify-email est gérée dans useAuth.register
     } catch {
       // erreur déjà gérée via useToast dans useAuth
     }
@@ -106,42 +157,88 @@ export default function RegisterPage() {
           <p className="mt-2 text-center text-[12px] font-medium text-[#5906ae]">{steps[step - 1].label}</p>
 
           <AnimatePresence mode="wait">
+            {/* ── Étape 1 ── */}
             {step === 1 && (
               <motion.form key="s1"
                 initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.3 }} onSubmit={handleStep1} className="mt-5 space-y-4"
               >
+                {/* Nom entreprise */}
                 <div>
                   <label className={labelCls}>Nom de l'entreprise</label>
                   <div className="relative">
                     <Building2 size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#E91E8C]" />
-                    <input {...form1.register('companyName')} className={inputCls.replace('px-4', 'pl-10 pr-4')} placeholder="Votre entreprise" />
+                    <input
+                      {...form1.register('companyName')}
+                      className={inputCls.replace('px-4', 'pl-10 pr-4')}
+                      placeholder="Votre entreprise"
+                    />
                   </div>
-                  {form1.formState.errors.companyName && <p className={errCls}>{form1.formState.errors.companyName.message}</p>}
+                  {form1.formState.errors.companyName && (
+                    <p className={errCls}>{form1.formState.errors.companyName.message}</p>
+                  )}
                 </div>
+
+                {/* Secteur */}
                 <div>
                   <label className={labelCls}>Secteur d'activité</label>
                   <select {...form1.register('sector')} className={inputCls}>
                     <option value="">Choisir un secteur</option>
-                    {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+                    {sectors.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
-                  {form1.formState.errors.sector && <p className={errCls}>{form1.formState.errors.sector.message}</p>}
+                  {form1.formState.errors.sector && (
+                    <p className={errCls}>{form1.formState.errors.sector.message}</p>
+                  )}
                 </div>
+
+                {/* Pays + Ville */}
                 <div className="grid grid-cols-2 gap-3">
+                  {/* Pays */}
                   <div>
                     <label className={labelCls}>Pays</label>
-                    <select {...form1.register('country')} className={inputCls}>
-                      <option value="">Pays</option>
-                      {countries.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    {form1.formState.errors.country && <p className={errCls}>{form1.formState.errors.country.message}</p>}
+                    <Controller
+                      control={form1.control}
+                      name="country"
+                      render={({ field }) => (
+                        <Combobox
+                          options={countryList}
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                          placeholder="Ex: Congo"
+                          loading={countryList.length === 0}
+                          minChars={2}
+                        />
+                      )}
+                    />
+                    {form1.formState.errors.country && (
+                      <p className={errCls}>{form1.formState.errors.country.message}</p>
+                    )}
                   </div>
+
+                  {/* Ville */}
                   <div>
                     <label className={labelCls}>Ville</label>
-                    <input {...form1.register('city')} className={inputCls} placeholder="Kinshasa" />
-                    {form1.formState.errors.city && <p className={errCls}>{form1.formState.errors.city.message}</p>}
+                    <Controller
+                      control={form1.control}
+                      name="city"
+                      render={({ field }) => (
+                        <Combobox
+                          options={cityList}
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                          placeholder={selectedCountry ? 'Ex: Kinshasa' : 'Pays d\'abord'}
+                          disabled={!selectedCountry}
+                          loading={citiesLoading}
+                          minChars={2}
+                        />
+                      )}
+                    />
+                    {form1.formState.errors.city && (
+                      <p className={errCls}>{form1.formState.errors.city.message}</p>
+                    )}
                   </div>
                 </div>
+
                 <motion.button whileTap={{ scale: 0.97 }} type="submit"
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#E91E8C] to-[#3B2F8F] py-3 text-[15px] font-semibold text-white shadow-md">
                   Suivant <ChevronRight size={18} />
@@ -149,6 +246,7 @@ export default function RegisterPage() {
               </motion.form>
             )}
 
+            {/* ── Étape 2 ── */}
             {step === 2 && (
               <motion.form key="s2"
                 initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
@@ -179,11 +277,20 @@ export default function RegisterPage() {
                 </div>
                 <div>
                   <label className={labelCls}>Téléphone</label>
-                  <div className="relative">
-                    <Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#E91E8C]" />
-                    <input {...form2.register('phone')} className={inputCls.replace('px-4', 'pl-10 pr-4')} placeholder="+243 81 000 0000" />
-                  </div>
-                  {form2.formState.errors.phone && <p className={errCls}>{form2.formState.errors.phone.message}</p>}
+                  <Controller
+                    control={form2.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <PhoneInput
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        error={form2.formState.errors.phone?.message}
+                      />
+                    )}
+                  />
+                  {form2.formState.errors.phone && (
+                    <p className={errCls}>{form2.formState.errors.phone.message}</p>
+                  )}
                 </div>
                 <div className="flex gap-3">
                   <button type="button" onClick={() => setStep(1)}
@@ -198,6 +305,7 @@ export default function RegisterPage() {
               </motion.form>
             )}
 
+            {/* ── Étape 3 ── */}
             {step === 3 && (
               <motion.form key="s3"
                 initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
