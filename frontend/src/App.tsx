@@ -13,6 +13,7 @@ const HomePage = lazy(() => import('./features/home/pages/HomePage'))
 const LoginPage = lazy(() => import('./features/auth/pages/LoginPage'))
 const RegisterPage = lazy(() => import('./features/auth/pages/RegisterPage'))
 const ForgotPasswordPage = lazy(() => import('./features/auth/pages/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('./features/auth/pages/ResetPasswordPage'))
 const VerifyEmailPage = lazy(() => import('./features/auth/pages/VerifyEmailPage'))
 const DashboardPage = lazy(() => import('./features/dashboard/pages/DashboardPage'))
 const CallCenterPage = lazy(() => import('./features/call-center/pages/CallCenterPage'))
@@ -45,7 +46,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useAppSelector(selectCurrentUser)
   if (!isAuthenticated) return <Navigate to="/login" replace />
   // Email non vérifié → retour sur la page de vérification
-  if (user && !user.emailVerifiedAt) return <Navigate to="/verify-email" replace />
+  if (user && !user.isEmailVerified) return <Navigate to="/verify-email" replace />
   return <>{children}</>
 }
 
@@ -53,7 +54,7 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAppSelector(selectIsAuthenticated)
   const user = useAppSelector(selectCurrentUser)
   // Authentifié mais email non vérifié → page de vérification
-  if (isAuthenticated && user && !user.emailVerifiedAt) return <Navigate to="/verify-email" replace />
+  if (isAuthenticated && user && !user.isEmailVerified) return <Navigate to="/verify-email" replace />
   if (isAuthenticated) return <Navigate to="/app/email/campagnes" replace />
   return <>{children}</>
 }
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
           <Route path="/register" element={<GuestRoute><RegisterPage /></GuestRoute>} />
           <Route path="/forgot-password" element={<GuestRoute><ForgotPasswordPage /></GuestRoute>} />
+          <Route path="/reset-password" element={<GuestRoute><ResetPasswordPage /></GuestRoute>} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
 
           {/* Protected routes — dans le layout principal */}

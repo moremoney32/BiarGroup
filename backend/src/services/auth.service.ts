@@ -34,6 +34,7 @@ function mapRowToUser(row: RowDataPacket): User {
     phone: row.phone ?? null,
     role: row.role as UserRole,
     isActive: Boolean(row.is_active),
+    isEmailVerified: Boolean(row.is_email_verified),
     emailVerifiedAt: row.email_verified_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -140,6 +141,7 @@ export const authService = {
       phone: phone ?? null,
       role: 'client',
       isActive: true,
+      isEmailVerified: false,
       emailVerifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -266,7 +268,13 @@ export const authService = {
     const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS)
 
     await pool.execute(
-      'UPDATE users SET password_hash = ?, password_reset_token = NULL, password_reset_expires = NULL WHERE id = ?',
+      `UPDATE users
+       SET password_hash = ?,
+           password_reset_token = NULL,
+           password_reset_expires = NULL,
+           is_email_verified = 1,
+           email_verified_at = COALESCE(email_verified_at, NOW())
+       WHERE id = ?`,
       [passwordHash, user.id]
     )
     // Force la reconnexion sur tous les appareils

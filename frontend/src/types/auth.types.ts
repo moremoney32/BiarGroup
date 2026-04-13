@@ -10,6 +10,7 @@ export interface User {
   phone: string | null
   role: UserRole
   isActive: boolean
+  isEmailVerified: boolean
   emailVerifiedAt: string | null
   createdAt: string
 }
