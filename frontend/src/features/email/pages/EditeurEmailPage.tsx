@@ -557,10 +557,10 @@ export default function EditeurEmailPage() {
       <div className="px-6 py-5">
 
         {/* ── Header ── */}
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-[18px] font-bold text-[#1F2937]">Ma nouvelle campagne</h1>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {savedMsg && (
               <span className="flex items-center gap-1.5 rounded-lg bg-green-50 border border-green-200 px-3 py-1.5 text-[11px] text-green-700">
                 <CheckCircle2 size={13} />
@@ -655,7 +655,7 @@ export default function EditeurEmailPage() {
         )}
 
         {/* ── Champs campagne ── */}
-        <div className="mb-4 grid grid-cols-5 gap-3">
+        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <div>
             <label className="mb-1 block text-[11px] font-medium text-gray-600">Nom de la campagne *</label>
             <input value={nomCampagne} onChange={e => { setNomCampagne(e.target.value); setSendError('') }}
@@ -685,7 +685,8 @@ export default function EditeurEmailPage() {
         </div>
 
         {/* ── Layout 3 colonnes ── */}
-        <div className="flex gap-4">
+        <div className="overflow-x-auto">
+        <div className="flex gap-4 min-w-[640px]">
 
           {/* ── Colonne gauche — Blocs ── */}
           <div className="w-44 shrink-0 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -904,6 +905,7 @@ export default function EditeurEmailPage() {
             </div>
           </div>
         </div>
+        </div> {/* overflow-x-auto */}
       </div>
 
       <DashboardFooter />

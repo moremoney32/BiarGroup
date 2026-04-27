@@ -86,7 +86,7 @@ export default function SegmentationEmailPage() {
         </div>
 
         {/* Stats */}
-        <div className="mb-5 grid grid-cols-3 gap-3">
+        <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
             { label: 'Groupes',         value: loading ? '—' : groups.length },
             { label: 'Total contacts',  value: loading ? '—' : totalContacts },

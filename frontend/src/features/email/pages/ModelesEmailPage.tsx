@@ -89,7 +89,7 @@ export default function ModelesEmailPage() {
         </div>
 
         {/* Stats */}
-        <div className="mb-5 grid grid-cols-4 gap-3">
+        <div className="mb-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
           {stats.map(({ label, value }) => (
             <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm text-center">
               {loading
@@ -150,7 +150,7 @@ export default function ModelesEmailPage() {
             )}
           </div>
         ) : (
-          <div className="mb-8 grid grid-cols-3 gap-4">
+          <div className="mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map(t => {
               const gradient = CATEGORY_GRADIENTS[t.category] ?? 'from-gray-400 to-slate-500'
               return (

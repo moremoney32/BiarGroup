@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Search, Sun, Bell, LogOut, Zap } from 'lucide-react'
+import { Search, Sun, Bell, LogOut, Zap, Menu } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useAppSelector } from '../../store/index'
 import { selectUnreadCount } from '../../store/slices/notificationSlice'
 import { useLocation } from 'react-router-dom'
 import apiFetch from '../../services/api'
 
-export default function Navbar() {
+interface NavbarProps {
+  onMenuClick?: () => void
+}
+
+export default function Navbar({ onMenuClick }: NavbarProps) {
   const { logout } = useAuth()
   const unread = useAppSelector(selectUnreadCount)
   const location = useLocation()
@@ -34,8 +38,17 @@ export default function Navbar() {
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4">
+      {/* Hamburger — mobile seulement */}
+      <button
+        onClick={onMenuClick}
+        className="md:hidden rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+        aria-label="Ouvrir le menu"
+      >
+        <Menu size={18} />
+      </button>
+
       {/* Search */}
-      <div className="relative flex-1 max-w-sm">
+      <div className="relative hidden sm:block flex-1 max-w-sm">
         <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
           type="text"

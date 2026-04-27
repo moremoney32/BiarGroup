@@ -130,10 +130,10 @@ export default function CampagnesEmailPage() {
     <div className="bg-white min-h-full">
       <div className="px-6 py-5">
         {/* Header */}
-        <div className="flex items-start justify-between mb-5">
+        <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-[22px] font-bold text-[#1F2937]">Email Marketing</h1>
-            <div className="mt-0.5 flex items-center gap-2">
+            <div className="mt-0.5 flex flex-wrap items-center gap-2">
               <p className="text-[13px] text-gray-500">Gestion complète de vos campagnes email &amp; newsletters</p>
               {lastUpdate && (
                 <span className="text-[11px] text-gray-400">
@@ -142,7 +142,7 @@ export default function CampagnesEmailPage() {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => load(true)}
               disabled={refreshing}
@@ -174,7 +174,7 @@ export default function CampagnesEmailPage() {
         </div>
 
         {/* Stats */}
-        <div className="mb-5 grid grid-cols-5 gap-3">
+        <div className="mb-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {topStats.map(({ icon: Icon, color, bg, label, value, trend, note }) => (
             <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between mb-3">
@@ -306,7 +306,7 @@ export default function CampagnesEmailPage() {
         </div>
 
         {/* Action cards */}
-        <div className="mb-8 grid grid-cols-3 gap-4">
+        <div className="mb-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
             { icon: Send,  label: 'Créer une campagne',    sub: 'Composez et envoyez un email à vos contacts',    bg: 'from-blue-400 to-indigo-500',   to: '/app/email/editeur' },
             { icon: Users, label: 'Segmentation avancée',  sub: 'Gérez vos groupes et ciblez avec précision',     bg: 'from-purple-400 to-pink-500',   to: '/app/email/segmentation' },

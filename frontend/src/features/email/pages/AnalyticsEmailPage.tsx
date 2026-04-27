@@ -105,7 +105,7 @@ export default function AnalyticsEmailPage() {
         </div>
 
         {/* Top stats */}
-        <div className="mb-5 grid grid-cols-6 gap-3">
+        <div className="mb-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {topStats.map(({ icon: Icon, color, bg, label, value }) => (
             <div key={label} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
               <div className="mb-2 flex items-start justify-between">
@@ -277,7 +277,7 @@ export default function AnalyticsEmailPage() {
 
         {/* Compteurs résumés */}
         {s && (
-          <div className="mb-8 grid grid-cols-4 gap-4">
+          <div className="mb-8 grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: 'Ouvertures totales',      value: fmt(s.opens),        color: 'text-[#8B5CF6]' },
               { label: 'Clics totaux',            value: fmt(s.clicks),       color: 'text-[#F4511E]' },

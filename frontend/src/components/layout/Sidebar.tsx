@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Phone, MessageSquare, Mail,
   MessageCircle, ChevronDown, ChevronRight,
   Edit, FileText, Zap, BarChart2, Filter,
-  Server, Shield, TrendingUp, User, LogOut, Globe,
+  Server, Shield, TrendingUp, User, LogOut, Globe, X,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useAppSelector } from '../../store/index'
@@ -41,15 +41,28 @@ const WaveIcon = ({ color = 'white' }: { color?: string }) => (
   </div>
 )
 
-export default function Sidebar() {
+interface SidebarProps {
+  open?: boolean
+  onClose?: () => void
+}
+
+export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const [emailOpen, setEmailOpen] = useState(true)
   const { logout } = useAuth()
   const user = useAppSelector(selectCurrentUser)
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-full w-[168px] flex-col border-r border-gray-200 bg-white">
+    <aside className={`fixed left-0 top-0 z-40 flex h-full w-[168px] flex-col border-r border-gray-200 bg-white transition-transform duration-300 ease-in-out md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
       {/* Logo */}
-      <div className="flex h-14 items-center gap-2 border-b border-gray-100 px-3">
+      <div className="relative flex h-14 items-center gap-2 border-b border-gray-100 px-3">
+        {/* Bouton fermer — mobile seulement */}
+        <button
+          onClick={onClose}
+          className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 md:hidden"
+          aria-label="Fermer le menu"
+        >
+          <X size={12} />
+        </button>
         <WaveIcon color="#F4511E" />
         <div className="flex items-baseline gap-1">
           <span className="text-[13px] font-bold text-[#1F2937]">ACTOR</span>
