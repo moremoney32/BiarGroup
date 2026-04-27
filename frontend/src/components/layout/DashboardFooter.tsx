@@ -1,4 +1,4 @@
-export default function DashboardFooter() {
+ export default function DashboardFooter() {
   return (
     <footer className="mt-8 bg-[#2563EB] px-8 py-8 text-white">
       <div className="flex items-start justify-between gap-8">

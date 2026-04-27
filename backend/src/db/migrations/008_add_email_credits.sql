@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN email_credits INT NOT NULL DEFAULT 100;

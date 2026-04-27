@@ -1,35 +1,130 @@
-import { useState } from 'react'
-import { Send, Eye, MousePointer, RotateCcw, CheckCircle2, Search, Filter, ArrowUpRight, ArrowDownRight, BarChart3, Users, Zap, TestTube, Monitor, ShieldAlert, Wifi, Star } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  Send, Eye, MousePointer, RotateCcw, CheckCircle2,
+  Search, Star, Zap, Users,
+  Loader2, Trash2, RefreshCw, Info,
+} from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
+import apiFetch from '../../../services/api'
 
-const stats = [
-  { icon: Send, color: '#3B82F6', bg: '#EFF6FF', label: 'Emails envoyés', value: '9 870', trend: '+12.5%', up: true },
-  { icon: CheckCircle2, color: '#10B981', bg: '#ECFDF5', label: 'Taux de délivrabilité', value: '99.5%', trend: '+2.3%', up: true },
-  { icon: Eye, color: '#8B5CF6', bg: '#F5F3FF', label: "Taux d'ouverture", value: '40.6%', trend: '+5.8%', up: true },
-  { icon: MousePointer, color: '#F4511E', bg: '#FFF7F5', label: 'Taux de clic', value: '9.6%', trend: '+3.2%', up: true },
-  { icon: RotateCcw, color: '#EF4444', bg: '#FEF2F2', label: 'Rebonds', value: '47', trend: '-1.2%', up: false },
-]
+interface Campaign {
+  id: number
+  name: string | null
+  category: string
+  sujet: string
+  expediteur: string
+  status: 'draft' | 'queued' | 'sending' | 'sent' | 'failed' | 'scheduled'
+  total_recipients: number
+  total_sent: number
+  total_failed: number
+  opens: number
+  clicks: number
+  unsubscribes: number
+  scheduled_at: string | null
+  sent_at: string | null
+  created_at: string
+}
 
-const tabs = ['Vue d\'ensemble', 'Segmentation', 'Éditeur', 'Analytics', 'Délivrabilité']
+interface Stats {
+  totalSent: number
+  totalRecipients: number
+  totalFailed: number
+  totalCampaigns: number
+  opens: number
+  clicks: number
+  bounces: number
+  unsubscribes: number
+  openRate: number
+  clickRate: number
+  bounceRate: number
+  unsubRate: number
+  deliverRate: number
+}
 
-const campaigns = [
-  { name: 'Lancement Royal Tower', sub: 'Découvrez', type: 'Bulk', status: 'Envoyé', statusColor: '#10B981', sent: '5 420', opens: '2 156', opensPct: '39.8%', clicks: '432', clicksPct: '8.0%', rate: 39.8 },
-  { name: 'Newsletter Février 2026', sub: 'Vos', type: 'Newsletter', status: 'Envoyé', statusColor: '#10B981', sent: '3 200', opens: '1 850', opensPct: '57.8%', clicks: '520', clicksPct: '16.3%', rate: 57.8 },
-  { name: 'Promo Saint-Valentin', sub: 'nOffre', type: 'Bulk', status: 'En cours', statusColor: '#F4511E', sent: '1 250', opens: '0', opensPct: '0.0%', clicks: '0', clicksPct: '0.0%', rate: 0 },
-  { name: 'Invitation Webinar Mars', sub: 'nez', type: 'Bulk', status: 'Programmé', statusColor: '#6366F1', sent: '0', opens: '0', opensPct: '0%', clicks: '0', clicksPct: '0%', rate: 0 },
-]
+const STATUS_MAP: Record<string, { label: string; color: string }> = {
+  sent:      { label: 'Envoyé',    color: '#10B981' },
+  sending:   { label: 'En cours',  color: '#F4511E' },
+  scheduled: { label: 'Planifié',  color: '#6366F1' },
+  queued:    { label: 'En attente',color: '#3B82F6' },
+  draft:     { label: 'Brouillon', color: '#9CA3AF' },
+  failed:    { label: 'Échoué',    color: '#EF4444' },
+}
 
-const metrics = [
-  { label: "Taux d'ouverture", value: '42.3%' },
-  { label: 'Taux de clic', value: '18.7%' },
-  { label: 'CTDR', value: '44.2%' },
-  { label: 'Conversions', value: '8.5%' },
-  { label: 'Désabonnements', value: '0.8%' },
-  { label: 'Plaintes', value: '0.02%' },
-]
+function fmt(n: number) {
+  return n.toLocaleString('fr-FR')
+}
+
+function pct(num: number, denom: number) {
+  if (!denom) return '—'
+  return (num / denom * 100).toFixed(1) + '%'
+}
 
 export default function CampagnesEmailPage() {
-  const [activeTab, setActiveTab] = useState(0)
+  const navigate = useNavigate()
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [stats, setStats]         = useState<Stats | null>(null)
+  const [search, setSearch]         = useState('')
+  const [loading, setLoading]       = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [deleting, setDeleting]     = useState<number | null>(null)
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    else setRefreshing(true)
+    try {
+      const [cRes, sRes] = await Promise.all([
+        apiFetch.get<{ data: Campaign[] }>('/email/campaigns'),
+        apiFetch.get<{ data: Stats }>('/email/campaigns/stats'),
+      ])
+      setCampaigns(cRes.data)
+      setStats(sRes.data)
+      setLastUpdate(new Date())
+    } catch {
+      // silently fail — empty state shown
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [])
+
+  // Chargement initial + auto-refresh toutes les 30 secondes
+  useEffect(() => {
+    load()
+    intervalRef.current = setInterval(() => load(true), 30_000)
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+    }
+  }, [load])
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Supprimer cette campagne ?')) return
+    setDeleting(id)
+    try {
+      await apiFetch.delete(`/email/campaigns/${id}`)
+      setCampaigns(prev => prev.filter(c => c.id !== id))
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  const filtered = campaigns.filter(c =>
+    (c.name ?? c.sujet).toLowerCase().includes(search.toLowerCase())
+  )
+
+  const s = stats
+
+  const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+
+  const topStats = [
+    { icon: Send,          color: '#3B82F6', bg: '#EFF6FF', label: 'Emails envoyés',        value: s ? fmt(s.totalSent)       : '—', trend: `${s?.totalCampaigns ?? 0} campagnes`, note: null },
+    { icon: CheckCircle2,  color: '#10B981', bg: '#ECFDF5', label: 'Taux de délivrabilité', value: s ? `${s.deliverRate}%`    : '—', trend: s ? `${fmt(s.totalRecipients)} dest.` : '', note: null },
+    { icon: Eye,           color: '#8B5CF6', bg: '#F5F3FF', label: "Taux d'ouverture",      value: s ? `${s.openRate}%`       : '—', trend: s ? `${fmt(s.opens)} ouvert.` : '', note: isLocalhost ? 'Inactif en local — nécessite HTTPS en production' : null },
+    { icon: MousePointer,  color: '#F4511E', bg: '#FFF7F5', label: 'Taux de clic',          value: s ? `${s.clickRate}%`      : '—', trend: s ? `${fmt(s.clicks)} clics` : '', note: null },
+    { icon: RotateCcw,     color: '#EF4444', bg: '#FEF2F2', label: 'Échouées',              value: s ? fmt(s.totalFailed)     : '—', trend: s ? `${s.bounceRate}% rebond` : '', note: null },
+  ]
 
   return (
     <div className="bg-white min-h-full">
@@ -38,16 +133,41 @@ export default function CampagnesEmailPage() {
         <div className="flex items-start justify-between mb-5">
           <div>
             <h1 className="text-[22px] font-bold text-[#1F2937]">Email Marketing</h1>
-            <p className="mt-0.5 text-[13px] text-gray-500">Gestion complète de vos campagnes email &amp; newsletters</p>
+            <div className="mt-0.5 flex items-center gap-2">
+              <p className="text-[13px] text-gray-500">Gestion complète de vos campagnes email &amp; newsletters</p>
+              {lastUpdate && (
+                <span className="text-[11px] text-gray-400">
+                  · Mis à jour à {lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-medium text-gray-700 hover:bg-gray-50">
+            <button
+              onClick={() => load(true)}
+              disabled={refreshing}
+              title="Rafraîchir les statistiques"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+              {refreshing ? 'Actualisation...' : 'Actualiser'}
+            </button>
+            <button
+              onClick={() => navigate('/app/email/modeles')}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-medium text-gray-700 hover:bg-gray-50"
+            >
               <Star size={13} /> Templates
             </button>
-            <button className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-medium text-gray-700 hover:bg-gray-50">
+            <button
+              onClick={() => navigate('/app/email/flux')}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-medium text-gray-700 hover:bg-gray-50"
+            >
               <Zap size={13} /> Automation
             </button>
-            <button className="flex items-center gap-1.5 rounded-lg bg-[#F4511E] px-3 py-2 text-[12px] font-semibold text-white hover:bg-[#d9400f]">
+            <button
+              onClick={() => navigate('/app/email/editeur')}
+              className="flex items-center gap-1.5 rounded-lg bg-[#F4511E] px-3 py-2 text-[12px] font-semibold text-white hover:bg-[#d9400f]"
+            >
               + Nouvelle campagne
             </button>
           </div>
@@ -55,345 +175,149 @@ export default function CampagnesEmailPage() {
 
         {/* Stats */}
         <div className="mb-5 grid grid-cols-5 gap-3">
-          {stats.map(({ icon: Icon, color, bg, label, value, trend, up }) => (
+          {topStats.map(({ icon: Icon, color, bg, label, value, trend, note }) => (
             <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
                   <Icon size={16} style={{ color }} />
                 </div>
-                <span className={`flex items-center gap-0.5 text-[11px] font-semibold ${up ? 'text-green-500' : 'text-red-500'}`}>
-                  {up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
-                  {trend}
-                </span>
+                <span className="text-[11px] text-gray-400">{trend}</span>
               </div>
-              <p className="text-[20px] font-bold text-[#1F2937]">{value}</p>
-              <p className="mt-0.5 text-[11px] text-gray-500">{label}</p>
+              {loading
+                ? <div className="h-6 w-16 animate-pulse rounded bg-gray-100 mb-1" />
+                : <p className="text-[20px] font-bold text-[#1F2937]">{value}</p>
+              }
+              <div className="mt-0.5 flex items-center gap-1">
+                <p className="text-[11px] text-gray-500">{label}</p>
+                {note && (
+                  <div className="group relative">
+                    <Info size={11} className="text-amber-400 cursor-help" />
+                    <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2 z-10 w-52 rounded-lg bg-gray-900 px-3 py-2 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                      {note}
+                      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 h-2 w-2 rotate-45 bg-gray-900" />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Tabs */}
-        <div className="mb-4 flex gap-1 border-b border-gray-100">
-          {tabs.map((t, i) => (
-            <button
-              key={t}
-              onClick={() => setActiveTab(i)}
-              className={`flex items-center gap-1.5 px-4 py-2 text-[12px] font-medium transition-colors border-b-2 -mb-px ${
-                activeTab === i
-                  ? 'border-[#F4511E] text-[#F4511E]'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
-        {/* Search + filter */}
+        {/* Search */}
         <div className="mb-4 flex items-center gap-3">
           <div className="relative flex-1">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               placeholder="Rechercher une campagne..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
               className="w-full rounded-lg border border-[#F4511E]/30 bg-[#FFF7F5] py-2 pl-8 pr-4 text-[12px] text-gray-700 outline-none focus:ring-2 focus:ring-[#F4511E]/20"
             />
           </div>
-          <button className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-[12px] font-medium text-gray-600 hover:bg-gray-50">
-            <Filter size={13} /> Filtrer
-          </button>
         </div>
 
-        {/* Table — Campagnes récentes */}
+        {/* Table */}
         <div className="mb-8 rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-50">
+          <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
             <h2 className="text-[14px] font-semibold text-[#1F2937]">Campagnes récentes</h2>
+            <span className="text-[11px] text-gray-400">{filtered.length} campagne{filtered.length !== 1 ? 's' : ''}</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-50 bg-gray-50/60">
-                  {['Campagne', 'Type', 'Statut', 'Envoyés', 'Ouvertures', 'Clics', 'Taux'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">{h}</th>
+                  {['Campagne', 'Type', 'Statut', 'Envoyés', 'Ouvertures', 'Clics', 'Taux ouvert.', ''].map(h => (
+                    <th key={h} className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                      {h === 'Ouvertures' && isLocalhost
+                        ? <span className="flex items-center gap-1">{h}<span className="normal-case font-normal text-[10px] text-amber-400">(HTTPS requis)</span></span>
+                        : h
+                      }
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {campaigns.map((c, i) => (
-                  <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                    <td className="px-4 py-3">
-                      <p className="text-[12px] font-semibold text-[#1F2937]">{c.name}</p>
-                      <p className="text-[11px] text-gray-400">{c.sub}</p>
-                    </td>
-                    <td className="px-4 py-3 text-[12px] text-gray-600">{c.type}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white" style={{ backgroundColor: c.statusColor }}>
-                        ● {c.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-[12px] text-gray-700">{c.sent}</td>
-                    <td className="px-4 py-3">
-                      <p className="text-[12px] text-gray-700">{c.opens}</p>
-                      <p className="text-[11px] text-blue-500">{c.opensPct}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-[12px] text-gray-700">{c.clicks}</p>
-                      <p className="text-[11px] text-green-500">{c.clicksPct}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-100">
-                          <div className="h-full rounded-full bg-[#F4511E]" style={{ width: `${c.rate}%` }} />
-                        </div>
-                        <span className="text-[11px] font-medium text-gray-600">{c.rate}%</span>
-                      </div>
+                {loading && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center">
+                      <Loader2 size={20} className="mx-auto animate-spin text-[#F4511E]" />
                     </td>
                   </tr>
-                ))}
+                )}
+                {!loading && filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-[12px] text-gray-400">
+                      {search ? 'Aucune campagne ne correspond à la recherche.' : 'Aucune campagne pour l\'instant. Créez votre première campagne !'}
+                    </td>
+                  </tr>
+                )}
+                {!loading && filtered.map(c => {
+                  const { label, color } = STATUS_MAP[c.status] ?? { label: c.status, color: '#9CA3AF' }
+                  const openRate = c.total_sent > 0 ? (c.opens / c.total_sent * 100) : 0
+                  return (
+                    <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                      <td className="px-4 py-3">
+                        <p className="text-[12px] font-semibold text-[#1F2937]">{c.name ?? c.sujet}</p>
+                        {c.name && <p className="text-[11px] text-gray-400 truncate max-w-[180px]">{c.sujet}</p>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                          {c.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white" style={{ backgroundColor: color }}>
+                          ● {label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-[12px] text-gray-700">{fmt(c.total_sent)}</td>
+                      <td className="px-4 py-3">
+                        <p className="text-[12px] text-gray-700">{fmt(c.opens)}</p>
+                        <p className="text-[11px] text-blue-500">{pct(c.opens, c.total_sent)}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-[12px] text-gray-700">{fmt(c.clicks)}</p>
+                        <p className="text-[11px] text-green-500">{pct(c.clicks, c.total_sent)}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-100">
+                            <div className="h-full rounded-full bg-[#F4511E]" style={{ width: `${Math.min(openRate, 100)}%` }} />
+                          </div>
+                          <span className="text-[11px] font-medium text-gray-600">{openRate.toFixed(1)}%</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => handleDelete(c.id)}
+                          disabled={deleting === c.id}
+                          className="rounded p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors disabled:opacity-50"
+                        >
+                          {deleting === c.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
         </div>
 
         {/* Action cards */}
-        <div className="mb-6 grid grid-cols-3 gap-4">
+        <div className="mb-8 grid grid-cols-3 gap-4">
           {[
-            { icon: Send, label: 'Créer une campagne', sub: 'Éditeur drag & drop avec templates professionnels', bg: 'from-blue-400 to-indigo-500' },
-            { icon: Users, label: 'Segmentation avancée', sub: 'Ciblage précis basé sur le comportement et données', bg: 'from-purple-400 to-pink-500' },
-            { icon: Zap, label: 'Marketing Automation', sub: 'Workflows automatisés, triggers et scénarios', bg: 'from-green-400 to-emerald-500' },
-          ].map(({ icon: Icon, label, sub, bg }) => (
-            <div key={label} className={`rounded-xl bg-gradient-to-br ${bg} p-5 text-white cursor-pointer hover:opacity-90 transition-opacity`}>
+            { icon: Send,  label: 'Créer une campagne',    sub: 'Composez et envoyez un email à vos contacts',    bg: 'from-blue-400 to-indigo-500',   to: '/app/email/editeur' },
+            { icon: Users, label: 'Segmentation avancée',  sub: 'Gérez vos groupes et ciblez avec précision',     bg: 'from-purple-400 to-pink-500',   to: '/app/email/segmentation' },
+            { icon: Zap,   label: 'Marketing Automation',  sub: 'Workflows automatisés déclenchés par événement', bg: 'from-green-400 to-emerald-500', to: '/app/email/flux' },
+          ].map(({ icon: Icon, label, sub, bg, to }) => (
+            <div key={label} onClick={() => navigate(to)} className={`cursor-pointer rounded-xl bg-gradient-to-br ${bg} p-5 text-white hover:opacity-90 transition-opacity`}>
               <Icon size={22} className="mb-3 opacity-90" />
               <p className="text-[13px] font-semibold">{label}</p>
               <p className="mt-1 text-[11px] opacity-80">{sub}</p>
             </div>
           ))}
-        </div>
-
-        {/* Optimisation & Automation */}
-        <div className="mb-6 grid grid-cols-2 gap-4">
-          {/* Optimisation & Tests */}
-          <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-50">
-                <TestTube size={15} className="text-[#F4511E]" />
-              </div>
-              <div>
-                <p className="text-[13px] font-semibold text-[#1F2937]">Optimisation &amp; Tests</p>
-                <p className="text-[11px] text-gray-500">Maximisez vos performances</p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {[
-                { icon: TestTube, label: 'A/B Testing', sub: 'Testez sujets, contenus et horaires' },
-                { icon: Monitor, label: 'Tests de Rendu', sub: 'Prévisualisation 50+ clients email' },
-                { icon: ShieldAlert, label: 'Spam Checker', sub: 'Analyse anti-spam & score délivr.', badge: '9.2/10' },
-              ].map(({ icon: Icon, label, sub, badge }) => (
-                <div key={label} className="flex items-center justify-between rounded-lg bg-[#F4511E] px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <Icon size={13} className="text-white/80" />
-                    <div>
-                      <p className="text-[12px] font-semibold text-white">{label}</p>
-                      <p className="text-[10px] text-white/70">{sub}</p>
-                    </div>
-                  </div>
-                  {badge && <span className="rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-bold text-white">{badge}</span>}
-                  <ArrowUpRight size={13} className="text-white/70" />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Automation Intelligente */}
-          <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-50">
-                <Zap size={15} className="text-[#F4511E]" />
-              </div>
-              <div>
-                <p className="text-[13px] font-semibold text-[#1F2937]">Automation Intelligente</p>
-                <p className="text-[11px] text-gray-500">Campagnes automatisées 24/7</p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {[
-                { label: 'Auto-répondeurs', sub: 'Réponses automatiques personnalisées', badge: '12 actifs', badgeColor: 'bg-green-500' },
-                { label: 'Emails de Bienvenue', sub: "Séquences d'onboarding auto", badge: '85% ouvert', badgeColor: 'bg-blue-500' },
-                { label: 'Drip Campaigns', sub: 'Séquences multi-emails programmées', badge: '8 actives', badgeColor: 'bg-purple-500' },
-              ].map(({ label, sub, badge, badgeColor }) => (
-                <div key={label} className="flex items-center justify-between rounded-lg bg-[#F4511E] px-3 py-2.5">
-                  <div>
-                    <p className="text-[12px] font-semibold text-white">{label}</p>
-                    <p className="text-[10px] text-white/70">{sub}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold text-white ${badgeColor}`}>{badge}</span>
-                    <ArrowUpRight size={13} className="text-white/70" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Métriques Détaillées */}
-        <div className="mb-6 rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className="text-[14px] font-semibold text-[#1F2937]">Métriques Détaillées</p>
-              <p className="text-[11px] text-gray-500">Analyse complète de vos performances</p>
-            </div>
-            <button className="flex items-center gap-1.5 rounded-lg bg-[#F4511E] px-3 py-1.5 text-[11px] font-semibold text-white">
-              <BarChart3 size={12} /> Voir tout
-            </button>
-          </div>
-          <div className="grid grid-cols-6 gap-3">
-            {metrics.map(({ label, value }) => (
-              <div key={label} className="rounded-xl bg-[#F4511E] p-3 text-center text-white">
-                <p className="text-[18px] font-bold">{value}</p>
-                <p className="mt-0.5 text-[10px] opacity-80">{label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Gestion des problèmes */}
-        <div className="mb-8 grid grid-cols-3 gap-4">
-          {/* Bounces */}
-          <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-            <div className="mb-3 flex items-center gap-2">
-              <RotateCcw size={15} className="text-[#F4511E]" />
-              <p className="text-[13px] font-semibold text-[#1F2937]">Gestion des Bounces</p>
-            </div>
-            <p className="mb-3 text-[11px] text-gray-500">Cette semaine</p>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between rounded-lg bg-[#F4511E] px-3 py-2">
-                <div>
-                  <p className="text-[12px] font-semibold text-white">Hard Bounces</p>
-                  <p className="text-[10px] text-white/70">Erreurs permanentes</p>
-                </div>
-                <span className="text-[18px] font-bold text-white">22</span>
-              </div>
-              <div className="flex items-center justify-between rounded-lg bg-[#F4511E] px-3 py-2">
-                <div>
-                  <p className="text-[12px] font-semibold text-white">Soft Bounces</p>
-                  <p className="text-[10px] text-white/70">Erreurs temporaires</p>
-                </div>
-                <span className="text-[18px] font-bold text-white">34</span>
-              </div>
-            </div>
-            <button className="mt-3 w-full rounded-lg bg-[#F4511E] py-2 text-[11px] font-semibold text-white hover:bg-[#d9400f]">
-              ⚙ Gérer les bounces
-            </button>
-          </div>
-
-          {/* Désabonnements */}
-          <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-            <div className="mb-3 flex items-center gap-2">
-              <Users size={15} className="text-[#F4511E]" />
-              <p className="text-[13px] font-semibold text-[#1F2937]">Désabonnements</p>
-            </div>
-            <p className="mb-1 text-[12px] text-gray-700 font-medium">18 cette semaine</p>
-            <div className="mb-3 space-y-1.5">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-gray-500">Taux de désabo — 7 derniers jours</span>
-                <span className="font-semibold text-green-500">0.8%</span>
-              </div>
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-gray-500">Total désabonnés — Liste complète</span>
-                <span className="text-[14px] font-bold text-[#1F2937]">1 234</span>
-              </div>
-            </div>
-            <button className="w-full rounded-lg bg-[#F4511E] py-2 text-[11px] font-semibold text-white hover:bg-[#d9400f]">
-              ⚙ Gérer les désabonnements
-            </button>
-          </div>
-
-          {/* Plaintes Spam */}
-          <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-            <div className="mb-3 flex items-center gap-2">
-              <ShieldAlert size={15} className="text-[#F4511E]" />
-              <p className="text-[13px] font-semibold text-[#1F2937]">Plaintes Spam</p>
-            </div>
-            <p className="mb-1 text-[12px] text-gray-700 font-medium">2 cette semaine</p>
-            <div className="mb-3 space-y-1.5">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-gray-500">Taux de plainte — 7 derniers jours</span>
-                <span className="font-semibold text-green-500">0.02%</span>
-              </div>
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-gray-500">Total plaintes — Tous temps</span>
-                <span className="text-[14px] font-bold text-[#1F2937]">45</span>
-              </div>
-            </div>
-            <button className="w-full rounded-lg bg-[#F4511E] py-2 text-[11px] font-semibold text-white hover:bg-[#d9400f]">
-              ⚙ Gérer les plaintes
-            </button>
-          </div>
-        </div>
-
-        {/* Infrastructure & Monitoring */}
-        <div className="mb-8 rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-50">
-              <Wifi size={15} className="text-[#F4511E]" />
-            </div>
-            <div>
-              <p className="text-[14px] font-semibold text-[#1F2937]">Infrastructure &amp; Monitoring</p>
-              <p className="text-[11px] text-gray-500">Gestion de la délivrabilité et des webhooks</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            {/* IP Dédiées */}
-            <div className="rounded-xl border border-gray-100 p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-[13px] font-semibold text-[#1F2937]">IP Dédiées</p>
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-600">3 actives</span>
-              </div>
-              <div className="mb-3 space-y-1 text-[11px] text-gray-600">
-                <p>• 192.168.1.45 — Score: 95/100</p>
-                <p>• 192.168.1.46 — Score: 98/100</p>
-                <p>• 192.168.1.47 — Score: 92/100</p>
-              </div>
-              <button className="text-[11px] font-semibold text-[#F4511E] hover:underline">Gérer les IP →</button>
-            </div>
-
-            {/* Réputation */}
-            <div className="rounded-xl border border-gray-100 p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-[13px] font-semibold text-[#1F2937]">Réputation</p>
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-600">Excellente</span>
-              </div>
-              <div className="mb-3">
-                <div className="mb-1 flex items-center justify-between text-[11px]">
-                  <span className="text-gray-500">Score global</span>
-                  <span className="font-bold text-[#1F2937]">95/100</span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
-                  <div className="h-full rounded-full bg-[#F4511E]" style={{ width: '95%' }} />
-                </div>
-                <div className="mt-2 flex gap-2">
-                  <span className="rounded bg-[#F4511E] px-2 py-0.5 text-[10px] font-semibold text-white">Inbox</span>
-                  <span className="rounded bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-600">Spam</span>
-                </div>
-              </div>
-              <button className="text-[11px] font-semibold text-[#F4511E] hover:underline">Voir les détails →</button>
-            </div>
-
-            {/* Webhooks */}
-            <div className="rounded-xl border border-gray-100 p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-[13px] font-semibold text-[#1F2937]">Webhooks</p>
-                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-600">6 actifs</span>
-              </div>
-              <div className="mb-3 space-y-1 text-[11px] text-gray-600">
-                <p>• Delivery events (5.2K/jour)</p>
-                <p>• Open events (8.7K/jour)</p>
-                <p>• Click events (2.1K/jour)</p>
-              </div>
-              <button className="text-[11px] font-semibold text-[#F4511E] hover:underline">Configurer →</button>
-            </div>
-          </div>
         </div>
       </div>
 
