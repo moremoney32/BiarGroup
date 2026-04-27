@@ -162,9 +162,9 @@ export const emailService = {
          c.id, c.name, c.category, c.sujet, c.expediteur, c.status,
          c.total_recipients, c.total_sent, c.total_failed,
          c.scheduled_at, c.sent_at, c.created_at,
-         COUNT(DISTINCT CASE WHEN ee.type = 'open'        THEN ee.id END) AS opens,
-         COUNT(DISTINCT CASE WHEN ee.type = 'click'       THEN ee.id END) AS clicks,
-         COUNT(DISTINCT CASE WHEN ee.type = 'unsubscribe' THEN ee.id END) AS unsubscribes
+         COUNT(DISTINCT CASE WHEN ee.type = 'open'        THEN ee.message_id END) AS opens,
+         COUNT(DISTINCT CASE WHEN ee.type = 'click'       THEN ee.message_id END) AS clicks,
+         COUNT(DISTINCT CASE WHEN ee.type = 'unsubscribe' THEN ee.message_id END) AS unsubscribes
        FROM email_campaigns c
        LEFT JOIN email_messages em ON em.campaign_id = c.id
        LEFT JOIN email_events   ee ON ee.message_id  = em.id
@@ -189,7 +189,7 @@ export const emailService = {
     )
 
     const [evRows] = await pool.execute<RowDataPacket[]>(
-      `SELECT ee.type, COUNT(*) AS cnt
+      `SELECT ee.type, COUNT(DISTINCT ee.message_id) AS cnt
        FROM email_events ee
        JOIN email_messages em ON em.id = ee.message_id
        JOIN email_campaigns ec ON ec.id = em.campaign_id
