@@ -254,7 +254,7 @@ export default function CampagnesEmailPage() {
                 )}
                 {!loading && filtered.map(c => {
                   const { label, color } = STATUS_MAP[c.status] ?? { label: c.status, color: '#9CA3AF' }
-                  const openRate = c.total_sent > 0 ? (c.opens / c.total_sent * 100) : 0
+                  const openRate = c.total_recipients > 0 ? (c.opens / c.total_recipients * 100) : 0
                   return (
                     <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       <td className="px-4 py-3">
@@ -274,11 +274,11 @@ export default function CampagnesEmailPage() {
                       <td className="px-4 py-3 text-[12px] text-gray-700">{fmt(c.total_sent)}</td>
                       <td className="px-4 py-3">
                         <p className="text-[12px] text-gray-700">{fmt(c.opens)}</p>
-                        <p className="text-[11px] text-blue-500">{pct(c.opens, c.total_sent)}</p>
+                        <p className="text-[11px] text-blue-500">{pct(c.opens, c.total_recipients)}</p>
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-[12px] text-gray-700">{fmt(c.clicks)}</p>
-                        <p className="text-[11px] text-green-500">{pct(c.clicks, c.total_sent)}</p>
+                        <p className="text-[11px] text-green-500">{pct(c.clicks, c.total_recipients)}</p>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
