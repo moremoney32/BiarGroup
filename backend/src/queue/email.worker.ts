@@ -56,6 +56,10 @@ emailQueue.process(3, async (job) => {
   }
 })
 
+emailQueue.on('error', (err) => {
+  console.warn('[EMAIL] Redis non disponible :', err.message)
+})
+
 emailQueue.on('completed', (job) => {
   console.log(`[EMAIL] ✅ ${job.data.to}`)
 })
@@ -96,7 +100,7 @@ const relanceQueue = new Bull('email-relance', {
   },
 })
 
-relanceQueue.process(1, async () => {
+relanceQueue.process('check-relances', 1, async () => {
   const { emailService } = await import('../services/email.service')
   await emailService.executePendingRelances()
 })
@@ -112,6 +116,9 @@ async function scheduleRelanceCheck() {
 }
 scheduleRelanceCheck().catch(console.error)
 
+relanceQueue.on('error', (err) => {
+  console.warn('[RELANCE] Redis non disponible :', err.message)
+})
 relanceQueue.on('completed', () => console.log('[RELANCE] ✅ Vérification terminée'))
 relanceQueue.on('failed', (_job, err) => console.error('[RELANCE] ❌', err.message))
 
