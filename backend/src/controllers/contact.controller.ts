@@ -28,7 +28,7 @@ export const contactController = {
 
   async getContacts(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       const contacts = await contactService.getContacts(tenantId)
       sendSuccess(res, contacts)
     } catch (err: unknown) {
@@ -38,7 +38,7 @@ export const contactController = {
 
   async getContact(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       const contacts = await contactService.getContacts(tenantId)
       const contact = contacts.find(c => c.id === Number(req.params.id))
       if (!contact) { sendError(res, 404, 'NOT_FOUND', 'Contact introuvable'); return }
@@ -52,7 +52,7 @@ export const contactController = {
     try {
       const parsed = createContactSchema.safeParse(req.body)
       if (!parsed.success) { sendError(res, 422, 'VALIDATION_ERROR', parsed.error.errors[0].message); return }
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       const contact = await contactService.createContact(parsed.data, tenantId)
       sendSuccess(res, contact, 'Contact créé')
     } catch (err: unknown) {
@@ -64,7 +64,7 @@ export const contactController = {
     try {
       const parsed = updateContactSchema.safeParse(req.body)
       if (!parsed.success) { sendError(res, 422, 'VALIDATION_ERROR', parsed.error.errors[0].message); return }
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       await contactService.updateContact(Number(req.params.id), parsed.data, tenantId)
       sendSuccess(res, null, 'Contact mis à jour')
     } catch (err: unknown) {
@@ -74,7 +74,7 @@ export const contactController = {
 
   async deleteContact(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       await contactService.deleteContact(Number(req.params.id), tenantId)
       sendSuccess(res, null, 'Contact supprimé')
     } catch (err: unknown) {
@@ -86,7 +86,7 @@ export const contactController = {
 
   async getGroups(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       const groups = await contactService.getGroupsWithContacts(tenantId)
       sendSuccess(res, groups)
     } catch (err: unknown) {
@@ -98,8 +98,8 @@ export const contactController = {
     try {
       const parsed = createGroupSchema.safeParse(req.body)
       if (!parsed.success) { sendError(res, 422, 'VALIDATION_ERROR', parsed.error.errors[0].message); return }
-      const tenantId = (req as any).tenant?.id ?? 1
-      const userId   = (req as any).user?.id   ?? 1
+      const tenantId = req.tenantId!
+      const userId   = req.user!.id
       const group = await contactService.createGroup(parsed.data.name, parsed.data.contactIds, tenantId, userId)
       sendSuccess(res, group, 'Groupe créé')
     } catch (err: unknown) {
@@ -109,7 +109,7 @@ export const contactController = {
 
   async deleteGroup(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       await contactService.deleteGroup(Number(req.params.id), tenantId)
       sendSuccess(res, null, 'Groupe supprimé')
     } catch (err: unknown) {

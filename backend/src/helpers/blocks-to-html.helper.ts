@@ -103,7 +103,7 @@ export function blocksToHtml(
 
   // Pixel de tracking ouverture — toujours présent quand messageId existe
   const trackingPixel = messageId
-    ? `<img src="${apiBase}/api/v1/email/track/open/${messageId}" width="1" height="1" style="display:none;border:0;outline:none;" alt="" />`
+    ? `<img src="${apiBase}/api/v1/email/track/open/${messageId}" width="1" height="1" border="0" alt="" style="height:1px;width:1px;border:0;margin:0;padding:0;" />`
     : ''
 
   // Lien désabonnement — toujours présent quand messageId existe
@@ -148,11 +148,11 @@ export function blocksToHtml(
               <p style="margin:0 0 4px 0;font-size:12px;font-weight:600;color:#4b5563;">${expediteur}</p>
               <p style="margin:0 0 12px 0;font-size:11px;color:#9ca3af;">SARLU — Kinshasa, RDC</p>
               <p style="margin:0;font-size:11px;">${unsubLink}</p>
+              ${trackingPixel}
             </td>
           </tr>
 
         </table>
-        ${trackingPixel}
       </td>
     </tr>
   </table>

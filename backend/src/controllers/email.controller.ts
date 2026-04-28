@@ -25,8 +25,8 @@ export const emailController = {
         sendError(res, 422, 'VALIDATION_ERROR', parsed.error.errors[0].message)
         return
       }
-      const tenantId = (req as any).tenant?.id ?? 1
-      const userId   = (req as any).user?.id   ?? 1
+      const tenantId = req.tenantId!
+      const userId   = req.user!.id
       const result = await emailService.createAndSendCampaign({ ...parsed.data, tenantId, userId })
       sendSuccess(res, result,
         result.queued
@@ -41,7 +41,7 @@ export const emailController = {
 
   async getCampaigns(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       const campaigns = await emailService.getCampaigns(tenantId)
       sendSuccess(res, campaigns)
     } catch (err: unknown) {
@@ -52,7 +52,7 @@ export const emailController = {
 
   async getStats(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       const stats = await emailService.getStats(tenantId)
       sendSuccess(res, stats)
     } catch (err: unknown) {
@@ -63,7 +63,7 @@ export const emailController = {
 
   async getCampaign(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       const campaign = await emailService.getCampaignById(Number(req.params.id), tenantId)
       if (!campaign) { sendError(res, 404, 'NOT_FOUND', 'Campagne introuvable'); return }
       sendSuccess(res, campaign)
@@ -75,7 +75,7 @@ export const emailController = {
 
   async deleteCampaign(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       await emailService.deleteCampaign(Number(req.params.id), tenantId)
       sendSuccess(res, null, 'Campagne supprimée')
     } catch (err: unknown) {
@@ -154,7 +154,7 @@ export const emailController = {
   },
   async getTemplates(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       const templates = await emailService.getTemplates(tenantId)
       sendSuccess(res, templates)
     } catch (err: unknown) {
@@ -173,8 +173,8 @@ export const emailController = {
       })
       const parsed = schema.safeParse(req.body)
       if (!parsed.success) { sendError(res, 422, 'VALIDATION_ERROR', parsed.error.errors[0].message); return }
-      const tenantId = (req as any).tenant?.id ?? 1
-      const userId   = (req as any).user?.id   ?? 1
+      const tenantId = req.tenantId!
+      const userId   = req.user!.id
       const template = await emailService.createTemplate(parsed.data, tenantId, userId)
       sendSuccess(res, template, 'Template sauvegardé')
     } catch (err: unknown) {
@@ -185,7 +185,7 @@ export const emailController = {
 
   async deleteTemplate(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       await emailService.deleteTemplate(Number(req.params.id), tenantId)
       sendSuccess(res, null, 'Template supprimé')
     } catch (err: unknown) {
@@ -210,8 +210,8 @@ export const emailController = {
       })
       const parsed = schema.safeParse(req.body)
       if (!parsed.success) { sendError(res, 422, 'VALIDATION_ERROR', parsed.error.errors[0].message); return }
-      const tenantId = (req as any).tenant?.id ?? 1
-      const userId   = (req as any).user?.id   ?? 1
+      const tenantId = req.tenantId!
+      const userId   = req.user!.id
       const result = await emailService.createRelance({ ...parsed.data, tenantId, userId })
 
       // Mode test (delayDays = 0) : exécute immédiatement sans attendre le job horaire
@@ -231,7 +231,7 @@ export const emailController = {
 
   async getRelances(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       const relances = await emailService.getRelances(tenantId)
       sendSuccess(res, relances)
     } catch (err: unknown) {
@@ -242,7 +242,7 @@ export const emailController = {
 
   async cancelRelance(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       await emailService.cancelRelance(Number(req.params.id), tenantId)
       sendSuccess(res, null, 'Relance annulée')
     } catch (err: unknown) {
@@ -253,7 +253,7 @@ export const emailController = {
 
   async getCredits(req: Request, res: Response): Promise<void> {
     try {
-      const userId = (req as any).user?.id ?? 1
+      const userId = req.user!.id
       const credits = await emailService.getCredits(userId)
       sendSuccess(res, { credits })
     } catch (err: unknown) {
@@ -264,7 +264,7 @@ export const emailController = {
 
   async getHeatmap(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = (req as any).tenant?.id ?? 1
+      const tenantId = req.tenantId!
       const matrix = await emailService.getHeatmap(tenantId)
       sendSuccess(res, matrix)
     } catch (err: unknown) {

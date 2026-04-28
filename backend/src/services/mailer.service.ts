@@ -32,7 +32,18 @@ export const mailerService = {
     const name = fromName ?? process.env.EMAIL_DEFAULT_SENDER_NAME ?? 'BIAR GROUP AFRICA'
     const from = `"${name}" <${process.env.EMAIL_DEFAULT_SENDER}>`
 
-    const info = await t.sendMail({ from, to, subject, html, replyTo })
+    const info = await t.sendMail({
+      from,
+      to,
+      subject,
+      html,
+      replyTo,
+      headers: {
+        // Améliore la délivrabilité et réduit le classement en "Promotions"
+        'X-Mailer': 'BIAR GROUP CPaaS',
+        'X-Priority': '3',
+      },
+    })
 
     console.log(`[MAILER] from=${from} to=${JSON.stringify(to)}`)
     console.log(`[MAILER] messageId=${info.messageId}`)
