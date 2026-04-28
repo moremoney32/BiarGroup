@@ -44,10 +44,11 @@ router.get('/test-send', async (req, res) => {
   }
 })
 
-// Routes publiques (pas de auth) — appelées depuis les emails
+// Routes publiques (pas de auth) — appelées depuis les emails et Brevo
 router.get('/track/open/:messageId',  emailController.trackOpen)
 router.get('/track/click/:messageId', emailController.trackClick)
 router.get('/unsubscribe/:messageId', emailController.unsubscribe)
+router.post('/webhook/brevo',         emailController.brevoWebhook)
 
 router.use(authMiddleware, tenantMiddleware)
 

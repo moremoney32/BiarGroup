@@ -200,6 +200,65 @@ export const emailController = {
 
   // ── Relances ────────────────────────────────────────────────────────────────
 
+  async brevoWebhook(req: Request, res: Response): Promise<void> {
+    const events = Array.isArray(req.body) ? req.body : [req.body]
+    res.status(200).json({ ok: true }) // répondre vite à Brevo
+
+    for (const ev of events) {
+      const brevoId   = ev['message-id'] as string | undefined
+      const eventType = ev.event         as string | undefined
+      if (!brevoId || !eventType) continue
+
+      try {
+        const [rows] = await pool.execute<RowDataPacket[]>(
+          `SELECT id, campaign_id, contact_id FROM email_messages WHERE brevo_message_id = ? LIMIT 1`,
+          [brevoId]
+        )
+        const msg = (rows as RowDataPacket[])[0]
+        if (!msg) continue
+
+        const { id: msgId, campaign_id: campId, contact_id: contactId } = msg
+
+        switch (eventType) {
+          case 'opened':
+            await pool.execute(
+              `INSERT INTO email_events (message_id, type) VALUES (?, 'open')`,
+              [msgId]
+            )
+            break
+
+          case 'click':
+            await pool.execute(
+              `INSERT INTO email_events (message_id, type, data) VALUES (?, 'click', ?)`,
+              [msgId, JSON.stringify({ url: ev.link ?? null })]
+            )
+            break
+
+          case 'soft_bounce':
+          case 'hard_bounce':
+            await Promise.all([
+              pool.execute(`INSERT INTO email_events (message_id, type) VALUES (?, 'bounce')`, [msgId]),
+              pool.execute(`UPDATE email_messages SET status='bounced', updated_at=NOW() WHERE id=?`, [msgId]),
+              pool.execute(`UPDATE email_campaigns SET total_failed=total_failed+1, updated_at=NOW() WHERE id=?`, [campId]),
+            ])
+            break
+
+          case 'unsubscribe':
+            await Promise.all([
+              pool.execute(`INSERT INTO email_events (message_id, type) VALUES (?, 'unsubscribe')`, [msgId]),
+              pool.execute(`UPDATE email_messages SET status='unsubscribed', updated_at=NOW() WHERE id=?`, [msgId]),
+              ...(contactId ? [
+                pool.execute(`UPDATE contacts SET is_opted_out=TRUE, opted_out_at=NOW() WHERE id=?`, [contactId]),
+              ] : []),
+            ])
+            break
+        }
+      } catch (err) {
+        console.error('[BREVO WEBHOOK]', eventType, brevoId, err)
+      }
+    }
+  },
+
   async createRelance(req: Request, res: Response): Promise<void> {
     try {
       const schema = z.object({

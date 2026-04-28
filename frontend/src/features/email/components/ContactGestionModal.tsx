@@ -1,6 +1,6 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, Fragment, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus, Trash2, Pencil, Check, XCircle, ChevronDown, ChevronRight, Loader2, AlertCircle } from 'lucide-react'
+import { X, Plus, Trash2, Pencil, Check, XCircle, ChevronDown, ChevronRight, Loader2, AlertCircle, Upload } from 'lucide-react'
 import type { Contact } from '../../../types/contact.types'
 import apiFetch from '../../../services/api'
 
@@ -53,6 +53,10 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
   const [editRow, setEditRow]         = useState<EditRow>({ name: '', email: '', phone: '' })
   const [editErrors, setEditErrors]   = useState<EditErrors>({})
   const [savingEdit, setSavingEdit]   = useState(false)
+
+  const [importing, setImporting]     = useState(false)
+  const [importMsg, setImportMsg]     = useState('')
+  const fileInputRef                  = useRef<HTMLInputElement>(null)
 
   const totalPages = Math.ceil((tab === 'individuel' ? contacts.length : groups.length) / PER_PAGE)
   const start = (page - 1) * PER_PAGE
@@ -193,6 +197,60 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
     }
   }
 
+  // ── Import CSV ───────────────────────────────────────────────────────────
+  function parseCsv(text: string) {
+    const lines = text.split('\n').filter(l => l.trim())
+    if (lines.length < 2) return []
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''))
+    const find = (...keys: string[]) => headers.findIndex(h => keys.some(k => h.includes(k)))
+    const nomIdx    = find('nom', 'last', 'surname', 'name')
+    const prenomIdx = find('prénom', 'prenom', 'first')
+    const emailIdx  = find('email', 'mail', 'courriel')
+    const phoneIdx  = find('téléphone', 'telephone', 'phone', 'tel', 'mobile')
+    const get = (idx: number, fallback: number, cols: string[]) =>
+      (idx >= 0 ? cols[idx] : cols[fallback]) ?? ''
+    return lines.slice(1).map(line => {
+      const cols = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, ''))
+      return {
+        lastName:  get(nomIdx, 0, cols),
+        firstName: get(prenomIdx, 1, cols),
+        email:     get(emailIdx, 2, cols),
+        phone:     get(phoneIdx, 3, cols),
+      }
+    }).filter(r => r.firstName || r.lastName)
+  }
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true)
+    setImportMsg('')
+    try {
+      const text = await file.text()
+      const rows = parseCsv(text)
+      if (rows.length === 0) { setImportMsg('Fichier vide ou format non reconnu'); setImporting(false); return }
+      const added: Contact[] = []
+      for (const row of rows) {
+        try {
+          const res = await apiFetch.post<{ data: Contact }>('/contacts', {
+            firstName: row.firstName || row.lastName,
+            lastName:  row.firstName ? row.lastName : null,
+            email:     row.email || null,
+            phone:     row.phone || null,
+          })
+          added.push(res.data)
+        } catch { /* ignore ligne invalide */ }
+      }
+      setContacts(prev => [...added, ...prev])
+      setImportMsg(`${added.length} contact${added.length > 1 ? 's' : ''} importé${added.length > 1 ? 's' : ''}`)
+    } catch {
+      setImportMsg('Erreur lors de la lecture du fichier')
+    } finally {
+      setImporting(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
   // ── Appliquer la sélection ───────────────────────────────────────────────
   const handleApply = () => {
     const applied = groups.filter(g => selectedGroups.includes(g.id))
@@ -233,9 +291,6 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
                     className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50"
                   >
                     <Plus size={13} /> Nouveau contact
-                  </button>
-                  <button className="flex items-center gap-1 rounded-lg bg-[#1a73e8] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#1557b0]">
-                    <Plus size={13} /> Importer un fichier
                   </button>
                   <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100" aria-label="Fermer">
                     <X size={15} />
@@ -307,17 +362,32 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
 
               {/* Import zone */}
               {!showForm && (
-                <div className="mx-6 mb-4 flex items-center justify-between rounded-xl border-2 border-dashed border-gray-200 px-4 py-3">
-                  <div>
-                    <p className="text-[12px] font-semibold text-[#1F2937]">Importer des contacts</p>
-                    <p className="mt-0.5 text-[11px] text-gray-500">
-                      Glissez-déposez un fichier CSV ou cliquez pour sélectionner un fichier.<br />
-                      Nous détectons automatiquement le format des colonnes.
-                    </p>
+                <div className="mx-6 mb-4">
+                  <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImportFile} />
+                  <div
+                    className="flex cursor-pointer items-center justify-between rounded-xl border-2 border-dashed border-gray-200 px-4 py-3 transition-colors hover:border-[#1a73e8]/40 hover:bg-blue-50/20"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <div>
+                      <p className="text-[12px] font-semibold text-[#1F2937]">Importer des contacts</p>
+                      <p className="mt-0.5 text-[11px] text-gray-500">
+                        Fichier CSV — colonnes : <span className="font-medium text-gray-600">nom, prénom, email, téléphone</span>
+                      </p>
+                      {importMsg && (
+                        <p className={`mt-1 text-[11px] font-medium ${importMsg.includes('importé') ? 'text-green-600' : 'text-red-500'}`}>
+                          {importMsg}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      disabled={importing}
+                      className="ml-4 flex shrink-0 items-center gap-1 rounded-lg bg-[#1a73e8] px-3 py-2 text-[12px] font-medium text-white hover:bg-[#1557b0] disabled:opacity-60"
+                      onClick={e => { e.stopPropagation(); fileInputRef.current?.click() }}
+                    >
+                      {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                      {importing ? 'Import...' : 'Importer un fichier'}
+                    </button>
                   </div>
-                  <button className="ml-4 flex shrink-0 items-center gap-1 rounded-lg bg-[#1a73e8] px-3 py-2 text-[12px] font-medium text-white hover:bg-[#1557b0]">
-                    <Plus size={13} /> Importer un fichier
-                  </button>
                 </div>
               )}
 

@@ -27,7 +27,7 @@ interface SendMailOptions {
 }
 
 export const mailerService = {
-  async send({ to, subject, html, replyTo, fromName }: SendMailOptions): Promise<void> {
+  async send({ to, subject, html, replyTo, fromName }: SendMailOptions): Promise<string> {
     const t = getTransporter()
     const name = fromName ?? process.env.EMAIL_DEFAULT_SENDER_NAME ?? 'BIAR GROUP AFRICA'
     const from = `"${name}" <${process.env.EMAIL_DEFAULT_SENDER}>`
@@ -54,6 +54,8 @@ export const mailerService = {
     if (info.rejected && (info.rejected as string[]).length > 0) {
       throw new Error(`Destinataires rejetés par Brevo : ${JSON.stringify(info.rejected)}`)
     }
+
+    return info.messageId as string
   },
 
   async verify(): Promise<boolean> {
