@@ -1,6 +1,23 @@
-# Fichiers personnels — ne pas pousser sur GitHub
+# ── Fichiers personnels ──────────────────────────────────────────
 CLAUDE.md
+CLAUDE*.md
 DOCKER_GUIDE.md
+.claude/
 
-# Variables d'environnement — jamais sur GitHub
+# ── Variables d'environnement — JAMAIS sur GitHub ────────────────
 .env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env.local
+frontend/.env.*.local
+
+# ── Dépendances et build ─────────────────────────────────────────
+node_modules/
+dist/
+*.log
+logs/
+coverage/
+.DS_Store
