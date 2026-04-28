@@ -30,7 +30,7 @@ emailQueue.process(3, async (job) => {
   const { messageId, campaignId, to, fromName, subject, html }: EmailJobData = job.data
 
   try {
-    const brevoMsgId = await mailerService.send({ to, subject, html, fromName })
+    const brevoMsgId = await mailerService.send({ to, subject, html, fromName, messageId })
 
     await pool.execute(
       `UPDATE email_messages SET status = 'sent', sent_at = NOW(), brevo_message_id = ?, updated_at = NOW() WHERE id = ?`,
