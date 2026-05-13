@@ -26,8 +26,21 @@ app.use(rateLimiterMiddleware)
 // Logging
 app.use(morgan('combined'))
 
-// CORS
-app.use(cors({ origin: process.env.CORS_ORIGIN, credentials: true }))
+// CORS — accepte plusieurs origines séparées par virgule dans CORS_ORIGIN
+const allowedOrigins = (process.env.CORS_ORIGIN ?? '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean)
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Requêtes sans origin (curl, apps mobiles, Postman)
+    if (!origin) return callback(null, true)
+    if (allowedOrigins.includes(origin)) return callback(null, true)
+    callback(new Error(`CORS: origin non autorisée — ${origin}`))
+  },
+  credentials: true,
+}))
 
 // Fichiers statiques — images uploadées
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')))

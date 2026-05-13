@@ -1,50 +1,4 @@
-import https from 'https'
-import http from 'http'
-import { URL } from 'url'
-
-const EMAIL_API_URL = process.env.EMAIL_API_URL || ''
-const DEFAULT_SENDER = 'biar.groupafrica@gmail.com'
-
-interface MailPayload {
-  receiver: string
-  sender: string
-  subject: string
-  message: string
-}
-
-function postJson(url: string, payload: MailPayload): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify(payload)
-    const parsed = new URL(url)
-    const lib = parsed.protocol === 'https:' ? https : http
-
-    const req = lib.request(
-      {
-        hostname: parsed.hostname,
-        path: parsed.pathname + parsed.search,
-        method: 'POST',
-        family: 4, // force IPv4 — IPv6 non dispo dans Docker
-        timeout: 10000,
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(body),
-        },
-      },
-      (res) => {
-        // on consomme la réponse pour libérer la connexion
-        res.resume()
-        if (res.statusCode && res.statusCode >= 400) {
-          return reject(new Error(`Mailer API returned ${res.statusCode}`))
-        }
-        resolve()
-      }
-    )
-
-    req.on('error', reject)
-    req.write(body)
-    req.end()
-  })
-}
+import { mailerService } from '../services/mailer.service'
 
 // ─── Templates HTML ───────────────────────────────────────────────────────────
 
@@ -185,11 +139,10 @@ export async function sendOtpEmail(params: {
   firstName: string
   otp: string
 }): Promise<void> {
-  await postJson(EMAIL_API_URL, {
-    receiver: params.to,
-    sender: DEFAULT_SENDER,
+  await mailerService.send({
+    to: params.to,
     subject: `${params.otp} — Votre code de vérification BIAR`,
-    message: otpTemplate({ firstName: params.firstName, otp: params.otp }),
+    html: otpTemplate({ firstName: params.firstName, otp: params.otp }),
   })
 }
 
@@ -201,10 +154,9 @@ export async function sendResetPasswordEmail(params: {
   const frontendUrl = process.env.CORS_ORIGIN || 'http://localhost:5173'
   const resetLink = `${frontendUrl}/reset-password?token=${params.resetToken}`
 
-  await postJson(EMAIL_API_URL, {
-    receiver: params.to,
-    sender: DEFAULT_SENDER,
+  await mailerService.send({
+    to: params.to,
     subject: 'Réinitialisation de votre mot de passe BIAR Actor Hub',
-    message: resetPasswordTemplate({ firstName: params.firstName, resetLink }),
+    html: resetPasswordTemplate({ firstName: params.firstName, resetLink }),
   })
 }

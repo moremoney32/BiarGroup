@@ -56,8 +56,11 @@ async function request<T>(
 
   const token = store.getState().auth.accessToken
 
+  const isFormData = body instanceof FormData
+
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    // Ne pas forcer Content-Type pour FormData — le navigateur ajoute le boundary
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...extraHeaders,
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
@@ -68,7 +71,7 @@ async function request<T>(
     credentials: 'include',
     signal: controller.signal,
   }
-  if (body !== undefined) init.body = JSON.stringify(body)
+  if (body !== undefined) init.body = isFormData ? body : JSON.stringify(body)
 
   let res: Response
   try {

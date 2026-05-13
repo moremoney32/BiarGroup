@@ -20,7 +20,7 @@ export default function PageWrapper() {
 
       <div className="flex flex-1 flex-col overflow-hidden md:ml-[168px]">
         <Navbar onMenuClick={() => setSidebarOpen(o => !o)} />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden">
           <Outlet />
         </main>
       </div>

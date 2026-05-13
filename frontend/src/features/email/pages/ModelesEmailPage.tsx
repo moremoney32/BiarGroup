@@ -4,7 +4,7 @@ import { Plus, Search, Trash2, Loader2, FileText } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import apiFetch from '../../../services/api'
 
-const CATEGORIES = ['Tous', 'Newsletter', 'Marketing', 'Événement', 'Transactionnel', 'Relationnel', 'Général']
+const CATEGORIES = ['Tous', 'Newsletter', 'Marketing', 'Promotionnel', 'Événement', 'Transactionnel', 'Relationnel', 'Général']
 
 const CATEGORY_GRADIENTS: Record<string, string> = {
   Newsletter:    'from-blue-400 to-indigo-600',
@@ -73,16 +73,16 @@ export default function ModelesEmailPage() {
 
   return (
     <div className="bg-white min-h-full">
-      <div className="px-6 py-5">
+      <div className="px-4 py-4 sm:px-6 sm:py-5">
         {/* Header */}
-        <div className="mb-5 flex items-start justify-between">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-[22px] font-bold text-[#1F2937]">Templates Email</h1>
-            <p className="mt-0.5 text-[13px] text-gray-500">Vos compositions sauvegardées, réutilisables pour de nouvelles campagnes</p>
+            <h1 className="text-[20px] font-bold text-[#1F2937] sm:text-[22px]">Templates Email</h1>
+            <p className="mt-0.5 text-[12px] text-gray-500 sm:text-[13px]">Vos compositions sauvegardées, réutilisables pour de nouvelles campagnes</p>
           </div>
           <button
             onClick={() => navigate('/app/email/editeur')}
-            className="flex items-center gap-1.5 rounded-lg bg-[#F4511E] px-4 py-2 text-[12px] font-semibold text-white hover:bg-[#d9400f]"
+            className="flex w-fit items-center gap-1.5 rounded-lg bg-[#F4511E] px-4 py-2 text-[12px] font-semibold text-white hover:bg-[#d9400f]"
           >
             <Plus size={14} /> Créer un template
           </button>
@@ -102,8 +102,8 @@ export default function ModelesEmailPage() {
         </div>
 
         {/* Search + filtres */}
-        <div className="mb-5 flex items-center gap-3">
-          <div className="relative w-52">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative w-full sm:w-52">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               value={search}

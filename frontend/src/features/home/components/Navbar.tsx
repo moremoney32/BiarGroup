@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Menu, X, Sun, ChevronDown } from 'lucide-react'
-import logoFull from '../../../assets/img_banner_1.png'
+import logoFull from '../../../assets/img_square_2.png'
 
 const links = [
   { label: 'Accueil', href: '#accueil' },

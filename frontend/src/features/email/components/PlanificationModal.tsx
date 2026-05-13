@@ -16,6 +16,7 @@ interface Props {
   expediteur?: string
   blocs?: EmailBlock[]
   groupesSelectionnes?: ContactGroup[]
+  segmentIds?: number[]
 }
 
 interface SendResult {
@@ -27,7 +28,7 @@ interface SendResult {
 
 type Mode = 'immediat' | 'differe'
 
-export default function PlanificationModal({ open, onClose, onSuccess, nomCampagne, category = 'Marketing', sujet, preheader, expediteur, blocs = [], groupesSelectionnes = [] }: Props) {
+export default function PlanificationModal({ open, onClose, onSuccess, nomCampagne, category = 'Marketing', sujet, preheader, expediteur, blocs = [], groupesSelectionnes = [], segmentIds = [] }: Props) {
   const [mode, setMode]           = useState<Mode>('immediat')
   const [date, setDate]           = useState('')
   const [heure, setHeure]         = useState('')
@@ -62,7 +63,8 @@ export default function PlanificationModal({ open, onClose, onSuccess, nomCampag
       preheader: preheader || null,
       expediteur,
       informationUser: blocs,
-      groupeIds: groupesSelectionnes.map(g => g.id),
+      groupeIds:  groupesSelectionnes.map(g => g.id),
+      segmentIds,
       scheduledAt: mode === 'differe' && date
         ? new Date(`${date}T${heure || '00:00'}`).toISOString()
         : null,
@@ -228,16 +230,15 @@ export default function PlanificationModal({ open, onClose, onSuccess, nomCampag
                           <Users size={12} className="mt-0.5 shrink-0 text-gray-400" />
                           <div>
                             <span className="text-[11px] text-gray-500">Destinataires : </span>
-                            {groupesSelectionnes.length > 0
-                              ? <span className="text-[12px] font-medium text-gray-700">
-                                  {groupesSelectionnes.map(g => `${g.name} (${g.contacts.length})`).join(', ')}
-                                  {' — '}
-                                  <span className="text-[#F4511E]">
-                                    {groupesSelectionnes.reduce((a, g) => a + g.contacts.length, 0)} destinataire{groupesSelectionnes.reduce((a, g) => a + g.contacts.length, 0) > 1 ? 's' : ''}
-                                  </span>
-                                </span>
-                              : <span className="text-[11px] italic text-orange-400">⚠ Aucun segment sélectionné</span>
-                            }
+                            {(groupesSelectionnes.length > 0 || segmentIds.length > 0) ? (
+                              <span className="text-[12px] font-medium text-gray-700">
+                                {groupesSelectionnes.length > 0 && groupesSelectionnes.map(g => g.name).join(', ')}
+                                {groupesSelectionnes.length > 0 && segmentIds.length > 0 && ' + '}
+                                {segmentIds.length > 0 && `${segmentIds.length} segment${segmentIds.length > 1 ? 's' : ''}`}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] italic text-orange-400">⚠ Aucun destinataire sélectionné</span>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">

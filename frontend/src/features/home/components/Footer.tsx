@@ -1,5 +1,5 @@
 import { Mail, Phone, MapPin, Facebook, Twitter, Linkedin, Instagram, Youtube } from 'lucide-react'
-import logoFull from '../../../assets/img_wide_1.png'
+import logoFull from '../../../assets/img_square_2.png'
 
 const solutions = [
   'Centre d\'Appels Cloud',

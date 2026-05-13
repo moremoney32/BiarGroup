@@ -10,6 +10,13 @@ export interface ContactGroup {
   contacts: Contact[]
 }
 
+export interface Segment {
+  id: number
+  name: string
+  type: 'dynamique' | 'statique'
+  contact_count: number
+}
+
 interface EditRow   { name: string; email: string; phone: string }
 interface EditErrors { name?: string; email?: string; phone?: string }
 
@@ -18,7 +25,11 @@ const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const phoneRe = /^\+?[\d\s\-(). ]{7,20}$/
 const emptyForm = { firstName: '', lastName: '', email: '', phone: '' }
 
-interface Props { open: boolean; onClose: () => void; onApply?: (groups: ContactGroup[]) => void }
+interface Props {
+  open: boolean
+  onClose: () => void
+  onApply?: (groups: ContactGroup[], segmentIds: number[]) => void
+}
 
 function validateRow(row: EditRow): EditErrors {
   const err: EditErrors = {}
@@ -29,11 +40,13 @@ function validateRow(row: EditRow): EditErrors {
 }
 
 export default function ContactGestionModal({ open, onClose, onApply }: Props) {
-  const [tab, setTab] = useState<'individuel' | 'groupe'>('individuel')
-  const [contacts, setContacts] = useState<Contact[]>([])
-  const [groups, setGroups]     = useState<ContactGroup[]>([])
-  const [loading, setLoading]   = useState(false)
-  const [apiError, setApiError] = useState('')
+  const [tab, setTab] = useState<'individuel' | 'groupe' | 'segment'>('individuel')
+  const [contacts, setContacts]   = useState<Contact[]>([])
+  const [groups, setGroups]       = useState<ContactGroup[]>([])
+  const [segments, setSegments]   = useState<Segment[]>([])
+  const [loading, setLoading]     = useState(false)
+  const [apiError, setApiError]   = useState('')
+  const [selectedSegments, setSelectedSegments] = useState<number[]>([])
 
   const [selectedContacts, setSelectedContacts] = useState<number[]>([])
   const [selectedGroups, setSelectedGroups]     = useState<number[]>([])
@@ -56,6 +69,7 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
 
   const [importing, setImporting]     = useState(false)
   const [importMsg, setImportMsg]     = useState('')
+  const [importSuccess, setImportSuccess] = useState(false)
   const fileInputRef                  = useRef<HTMLInputElement>(null)
 
   const totalPages = Math.ceil((tab === 'individuel' ? contacts.length : groups.length) / PER_PAGE)
@@ -73,12 +87,14 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
     setLoading(true)
     setApiError('')
     try {
-      const [cRes, gRes] = await Promise.all([
+      const [cRes, gRes, sRes] = await Promise.all([
         apiFetch.get<{ data: Contact[] }>('/contacts'),
         apiFetch.get<{ data: ContactGroup[] }>('/contacts/groups'),
+        apiFetch.get<{ data: { segments: Segment[] } }>('/contacts/segments'),
       ])
       setContacts(cRes.data ?? [])
       setGroups(gRes.data ?? [])
+      setSegments(sRes.data?.segments ?? [])
     } catch {
       setApiError('Impossible de charger les contacts')
     } finally {
@@ -90,7 +106,9 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
     setSelectedContacts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   const toggleGroup = (id: number) =>
     setSelectedGroups(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-  const switchTab = (t: 'individuel' | 'groupe') => { setTab(t); setPage(1); setExpandedGroup(null) }
+  const toggleSegment = (id: number) =>
+    setSelectedSegments(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  const switchTab = (t: 'individuel' | 'groupe' | 'segment') => { setTab(t); setPage(1); setExpandedGroup(null) }
 
   const inputCls = (err?: string) =>
     `w-full rounded-lg border px-2.5 py-1.5 text-[12px] text-gray-800 bg-white outline-none transition-colors placeholder:text-gray-300 ${err ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#1a73e8]'}`
@@ -198,53 +216,29 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
   }
 
   // ── Import CSV ───────────────────────────────────────────────────────────
-  function parseCsv(text: string) {
-    const lines = text.split('\n').filter(l => l.trim())
-    if (lines.length < 2) return []
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''))
-    const find = (...keys: string[]) => headers.findIndex(h => keys.some(k => h.includes(k)))
-    const nomIdx    = find('nom', 'last', 'surname', 'name')
-    const prenomIdx = find('prénom', 'prenom', 'first')
-    const emailIdx  = find('email', 'mail', 'courriel')
-    const phoneIdx  = find('téléphone', 'telephone', 'phone', 'tel', 'mobile')
-    const get = (idx: number, fallback: number, cols: string[]) =>
-      (idx >= 0 ? cols[idx] : cols[fallback]) ?? ''
-    return lines.slice(1).map(line => {
-      const cols = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, ''))
-      return {
-        lastName:  get(nomIdx, 0, cols),
-        firstName: get(prenomIdx, 1, cols),
-        email:     get(emailIdx, 2, cols),
-        phone:     get(phoneIdx, 3, cols),
-      }
-    }).filter(r => r.firstName || r.lastName)
-  }
-
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setImporting(true)
     setImportMsg('')
+    setImportSuccess(false)
     try {
-      const text = await file.text()
-      const rows = parseCsv(text)
-      if (rows.length === 0) { setImportMsg('Fichier vide ou format non reconnu'); setImporting(false); return }
-      const added: Contact[] = []
-      for (const row of rows) {
-        try {
-          const res = await apiFetch.post<{ data: Contact }>('/contacts', {
-            firstName: row.firstName || row.lastName,
-            lastName:  row.firstName ? row.lastName : null,
-            email:     row.email || null,
-            phone:     row.phone || null,
-          })
-          added.push(res.data)
-        } catch { /* ignore ligne invalide */ }
-      }
-      setContacts(prev => [...added, ...prev])
-      setImportMsg(`${added.length} contact${added.length > 1 ? 's' : ''} importé${added.length > 1 ? 's' : ''}`)
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await apiFetch.post<{ data: { inserted: number; updated: number; skipped: number }; message: string }>(
+        '/contacts/import',
+        formData,
+      )
+      const { inserted, updated } = res.data
+      const fresh = await apiFetch.get<{ data: Contact[] }>('/contacts')
+      setContacts(fresh.data ?? [])
+      // Sélectionner automatiquement tous les contacts pour faciliter la création de groupe
+      setSelectedContacts((fresh.data ?? []).map((c: Contact) => c.id))
+      setImportMsg(`${inserted} ajouté(s), ${updated} mis à jour`)
+      setImportSuccess(true)
     } catch {
-      setImportMsg('Erreur lors de la lecture du fichier')
+      setImportMsg('Erreur lors de l\'import — vérifiez le format du fichier')
+      setImportSuccess(false)
     } finally {
       setImporting(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -253,8 +247,8 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
 
   // ── Appliquer la sélection ───────────────────────────────────────────────
   const handleApply = () => {
-    const applied = groups.filter(g => selectedGroups.includes(g.id))
-    onApply?.(applied)
+    const appliedGroups = groups.filter(g => selectedGroups.includes(g.id))
+    onApply?.(appliedGroups, selectedSegments)
     onClose()
   }
 
@@ -268,29 +262,31 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
             className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
             onClick={onClose}
           />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 8 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl"
+              className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-w-2xl sm:rounded-2xl"
               onClick={e => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="flex items-start justify-between px-6 pt-5 pb-3">
+              <div className="flex items-start justify-between px-4 pt-4 pb-3 sm:px-6 sm:pt-5">
                 <div>
-                  <h2 className="text-[15px] font-bold text-[#1F2937]">Gestion des contacts</h2>
-                  <p className="mt-0.5 max-w-sm text-[11px] leading-relaxed text-gray-500">
-                    Importer de nouveaux fichiers, supprimer, modifier et subdiviser vos contacts en ensembles personnalisés pour des campagnes précises.
+                  <h2 className="text-[14px] font-bold text-[#1F2937] sm:text-[15px]">Gestion des contacts</h2>
+                  <p className="mt-0.5 hidden max-w-sm text-[11px] leading-relaxed text-gray-500 sm:block">
+                    Importez, modifiez et regroupez vos contacts pour des campagnes ciblées.
                   </p>
                 </div>
-                <div className="ml-4 flex shrink-0 items-center gap-2">
+                <div className="ml-3 flex shrink-0 items-center gap-1.5 sm:ml-4 sm:gap-2">
                   <button
                     onClick={() => { setShowForm(v => !v); setEditingId(null); setFormErrors({}) }}
-                    className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50"
+                    className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-[11px] font-medium text-gray-700 hover:bg-gray-50 sm:px-3 sm:text-[12px]"
                   >
-                    <Plus size={13} /> Nouveau contact
+                    <Plus size={12} />
+                    <span className="hidden sm:inline">Nouveau contact</span>
+                    <span className="sm:hidden">Ajouter</span>
                   </button>
                   <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100" aria-label="Fermer">
                     <X size={15} />
@@ -318,7 +314,7 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
                     exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}
                     className="overflow-hidden"
                   >
-                    <div className="mx-6 mb-3 rounded-xl border border-[#1a73e8]/30 bg-blue-50/30 p-4">
+                    <div className="mx-4 mb-3 rounded-xl border border-[#1a73e8]/30 bg-blue-50/30 p-3 sm:mx-6 sm:p-4">
                       <p className="mb-3 text-[12px] font-semibold text-[#1F2937]">Nouveau contact</p>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
@@ -362,8 +358,8 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
 
               {/* Import zone */}
               {!showForm && (
-                <div className="mx-6 mb-4">
-                  <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImportFile} />
+                <div className="mx-4 mb-3 sm:mx-6 sm:mb-4">
+                  <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleImportFile} />
                   <div
                     className="flex cursor-pointer items-center justify-between rounded-xl border-2 border-dashed border-gray-200 px-4 py-3 transition-colors hover:border-[#1a73e8]/40 hover:bg-blue-50/20"
                     onClick={() => fileInputRef.current?.click()}
@@ -371,11 +367,12 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
                     <div>
                       <p className="text-[12px] font-semibold text-[#1F2937]">Importer des contacts</p>
                       <p className="mt-0.5 text-[11px] text-gray-500">
-                        Fichier CSV — colonnes : <span className="font-medium text-gray-600">nom, prénom, email, téléphone</span>
+                        <span className="font-medium text-gray-600">CSV ou Excel</span> — colonnes : nom, prénom, email, téléphone, + champs libres (age, ville…)
                       </p>
                       {importMsg && (
-                        <p className={`mt-1 text-[11px] font-medium ${importMsg.includes('importé') ? 'text-green-600' : 'text-red-500'}`}>
+                        <p className={`mt-1 text-[11px] font-medium ${importSuccess ? 'text-green-600' : 'text-red-500'}`}>
                           {importMsg}
+                          {importSuccess && ' — Donnez un nom au groupe ci-dessous ↓'}
                         </p>
                       )}
                     </div>
@@ -392,21 +389,71 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
               )}
 
               {/* Tabs */}
-              <div className="mx-6 mb-3 flex overflow-hidden rounded-xl border border-gray-200">
-                {(['individuel', 'groupe'] as const).map(t => (
-                  <button key={t} onClick={() => switchTab(t)}
-                    className={`flex-1 py-2 text-[12px] font-semibold transition-colors ${tab === t ? 'bg-[#F4511E] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                    {t === 'individuel' ? 'Contact individuel' : 'Groupe de contacts'}
+              <div className="mx-4 mb-3 flex overflow-hidden rounded-xl border border-gray-200 sm:mx-6">
+                {([
+                  { key: 'individuel', label: 'Contacts' },
+                  { key: 'groupe',    label: 'Groupes' },
+                  { key: 'segment',   label: 'Segments' },
+                ] as const).map(({ key, label }) => (
+                  <button key={key} onClick={() => switchTab(key)}
+                    className={`flex-1 py-2 text-[12px] font-semibold transition-colors ${tab === key ? 'bg-[#F4511E] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                    {label}
                   </button>
                 ))}
               </div>
 
               {/* Contenu */}
-              <div className="mx-6 max-h-[280px] overflow-y-auto">
+              <div className="mx-4 max-h-[40vh] overflow-y-auto sm:mx-6 sm:max-h-[280px]">
                 {loading ? (
                   <div className="flex items-center justify-center py-10 text-[12px] text-gray-400">
                     <Loader2 size={18} className="mr-2 animate-spin" /> Chargement...
                   </div>
+                ) : tab === 'segment' ? (
+                  <table className="w-full table-fixed text-[12px]">
+                    <colgroup>
+                      <col className="w-8" />
+                      <col />
+                      <col className="w-24" />
+                      <col className="w-24" />
+                    </colgroup>
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="border-b border-gray-100">
+                        <th className="pb-2 text-left text-[11px] font-semibold text-gray-500">Sél.</th>
+                        <th className="pb-2 text-left text-[11px] font-semibold text-gray-500">Segment</th>
+                        <th className="pb-2 text-left text-[11px] font-semibold text-gray-500">Type</th>
+                        <th className="pb-2 text-left text-[11px] font-semibold text-gray-500">Contacts</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {segments.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-6 text-center text-[12px] text-gray-400 italic">
+                            Aucun segment — créez-en depuis la page Segmentation
+                          </td>
+                        </tr>
+                      )}
+                      {segments.map(s => {
+                        const sel = selectedSegments.includes(s.id)
+                        return (
+                          <tr key={s.id} className={`border-b border-gray-50 last:border-0 transition-colors ${sel ? 'bg-purple-50/40' : 'hover:bg-gray-50/60'}`}>
+                            <td className="py-2.5">
+                              <input type="checkbox" checked={sel} onChange={() => toggleSegment(s.id)}
+                                className="h-4 w-4 cursor-pointer accent-[#3B2F8F]" />
+                            </td>
+                            <td className="py-2.5 pr-2">
+                              <span title={s.name} className="block max-w-full truncate font-medium text-gray-700">{s.name}</span>
+                            </td>
+                            <td className="py-2.5 pr-2">
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${s.type === 'dynamique' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
+                                {s.type === 'dynamique' ? 'Dynamique' : 'Statique'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 text-gray-400">{(s.contact_count ?? 0).toLocaleString()}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 ) : tab === 'individuel' ? (
                   <table className="w-full table-fixed text-[12px]">
                     <colgroup>
@@ -418,8 +465,21 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
                     </colgroup>
                     <thead className="sticky top-0 bg-white">
                       <tr className="border-b border-gray-100">
-                        <th className="pb-2 text-left text-[11px] font-semibold text-gray-500">Sél.</th>
-                        <th className="pb-2 text-left text-[11px] font-semibold text-gray-500">Noms et Prénom</th>
+                        <th className="pb-2 text-left">
+                          <input
+                            type="checkbox"
+                            title="Tout sélectionner"
+                            checked={contacts.length > 0 && selectedContacts.length === contacts.length}
+                            onChange={e => setSelectedContacts(e.target.checked ? contacts.map(c => c.id) : [])}
+                            className="h-4 w-4 cursor-pointer accent-[#1a73e8]"
+                          />
+                        </th>
+                        <th className="pb-2 text-left text-[11px] font-semibold text-gray-500">
+                          Noms et Prénom
+                          {selectedContacts.length > 0 && (
+                            <span className="ml-1.5 font-normal text-[#1a73e8]">({selectedContacts.length} sél.)</span>
+                          )}
+                        </th>
                         <th className="pb-2 text-left text-[11px] font-semibold text-gray-500">Email</th>
                         <th className="pb-2 text-left text-[11px] font-semibold text-gray-500">Téléphone</th>
                         <th className="pb-2 text-left text-[11px] font-semibold text-gray-500">Actions</th>
@@ -584,7 +644,7 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
               </div>
 
               {/* Footer */}
-              <div className="mx-6 mt-4 mb-5 flex items-center justify-between gap-3">
+              <div className="mx-4 mt-3 mb-4 flex items-center justify-between gap-2 sm:mx-6 sm:mt-4 sm:mb-5 sm:gap-3">
                 <div className="flex items-center gap-2">
                   <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
                     className="rounded-lg border border-gray-200 px-4 py-1.5 text-[12px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40">
@@ -620,6 +680,15 @@ export default function ContactGestionModal({ open, onClose, onApply }: Props) {
                     <button onClick={handleApply}
                       className="rounded-lg bg-[#F4511E] px-5 py-2 text-[12px] font-semibold text-white hover:bg-[#d9400f]">
                       Appliquer ({selectedGroups.length} groupe{selectedGroups.length > 1 ? 's' : ''})
+                    </button>
+                  </motion.div>
+                )}
+
+                {tab === 'segment' && selectedSegments.length > 0 && (
+                  <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
+                    <button onClick={handleApply}
+                      className="rounded-lg bg-[#3B2F8F] px-5 py-2 text-[12px] font-semibold text-white hover:bg-[#2d2370]">
+                      Appliquer ({selectedSegments.length} segment{selectedSegments.length > 1 ? 's' : ''})
                     </button>
                   </motion.div>
                 )}

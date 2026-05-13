@@ -48,7 +48,8 @@ router.get('/test-send', async (req, res) => {
 router.get('/track/open/:messageId',  emailController.trackOpen)
 router.get('/track/click/:messageId', emailController.trackClick)
 router.get('/unsubscribe/:messageId', emailController.unsubscribe)
-router.post('/webhook/brevo',         emailController.brevoWebhook)
+router.post('/webhook/brevo',    emailController.brevoWebhook)
+router.post('/webhook/sendgrid', emailController.sendgridWebhook)
 
 router.use(authMiddleware, tenantMiddleware)
 
@@ -67,11 +68,33 @@ router.get('/templates', emailController.getTemplates)
 router.post('/templates', rbacMiddleware(['client', 'admin', 'super_admin']), emailController.createTemplate)
 router.delete('/templates/:id', rbacMiddleware(['client', 'admin', 'super_admin']), emailController.deleteTemplate)
 
-router.get('/smtp', rbacMiddleware(['admin', 'super_admin']), emailController.getSmtpConfigs)
-router.post('/smtp', rbacMiddleware(['admin', 'super_admin']), emailController.createSmtpConfig)
+router.get('/smtp',                   rbacMiddleware(['admin', 'super_admin']), emailController.getSmtpConfigs)
+router.post('/smtp',                  rbacMiddleware(['admin', 'super_admin']), emailController.createSmtpConfig)
+router.put('/smtp/:id',               rbacMiddleware(['admin', 'super_admin']), emailController.updateSmtpConfig)
+router.delete('/smtp/:id',            rbacMiddleware(['admin', 'super_admin']), emailController.deleteSmtpConfig)
+router.patch('/smtp/:id/default',     rbacMiddleware(['admin', 'super_admin']), emailController.setSmtpDefault)
+router.post('/smtp/:id/verify',       rbacMiddleware(['admin', 'super_admin']), emailController.verifySmtpConfig)
 
-router.get('/relances',     emailController.getRelances)
-router.post('/relances',    rbacMiddleware(['client', 'admin', 'super_admin']), emailController.createRelance)
+router.get('/relances',        emailController.getRelances)
+router.post('/relances',       rbacMiddleware(['client', 'admin', 'super_admin']), emailController.createRelance)
 router.delete('/relances/:id', rbacMiddleware(['client', 'admin', 'super_admin']), emailController.cancelRelance)
+
+router.get('/ab-tests',        emailController.getAbTests)
+router.post('/ab-tests',       rbacMiddleware(['client', 'admin', 'super_admin']), emailController.createAbTest)
+router.delete('/ab-tests/:id', rbacMiddleware(['client', 'admin', 'super_admin']), emailController.cancelAbTest)
+
+router.get('/flows/stats',           emailController.getFlowStats)
+router.get('/flows',                 emailController.getFlows)
+router.get('/flows/:id',             emailController.getFlowById)
+router.post('/flows',                rbacMiddleware(['client', 'admin', 'super_admin']), emailController.createFlow)
+router.put('/flows/:id',             rbacMiddleware(['client', 'admin', 'super_admin']), emailController.updateFlow)
+router.delete('/flows/:id',          rbacMiddleware(['client', 'admin', 'super_admin']), emailController.deleteFlow)
+router.post('/flows/:id/duplicate',  rbacMiddleware(['client', 'admin', 'super_admin']), emailController.duplicateFlow)
+router.put('/flows/:id/status',      rbacMiddleware(['client', 'admin', 'super_admin']), emailController.setFlowStatus)
+
+router.get('/domains',              emailController.getDomains)
+router.post('/domains',             rbacMiddleware(['client', 'admin', 'super_admin']), emailController.addDomain)
+router.delete('/domains/:id',       rbacMiddleware(['client', 'admin', 'super_admin']), emailController.deleteDomain)
+router.post('/domains/:id/verify',  rbacMiddleware(['client', 'admin', 'super_admin']), emailController.verifyDomain)
 
 export default router

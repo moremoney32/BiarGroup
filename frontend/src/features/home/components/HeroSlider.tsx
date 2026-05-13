@@ -2,11 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react'
 import { heroSlides } from '../../../datamocks/home.mock'
-import bg1 from '../../../assets/Section.png'
 import bg2 from '../../../assets/Section2.png'
-import bg3 from '../../../assets/Section3.png'
-import bg4 from '../../../assets/Section4.png'
-import bg5 from '../../../assets/Section5.png'
+
+const bg1 = bg2, bg3 = bg2, bg4 = bg2, bg5 = bg2
 
 const bgs = [bg1, bg2, bg3, bg4, bg5]
 

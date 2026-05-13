@@ -92,14 +92,14 @@ export default function AnalyticsEmailPage() {
 
   return (
     <div className="bg-white min-h-full">
-      <div className="px-6 py-5">
+      <div className="px-4 py-4 sm:px-6 sm:py-5">
         {/* Header */}
-        <div className="mb-5 flex items-start justify-between">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-[22px] font-bold text-[#1F2937]">Analytics Email</h1>
-            <p className="mt-0.5 text-[13px] text-gray-500">Analyses détaillées des performances de vos campagnes email</p>
+            <h1 className="text-[20px] font-bold text-[#1F2937] sm:text-[22px]">Analytics Email</h1>
+            <p className="mt-0.5 text-[12px] text-gray-500 sm:text-[13px]">Analyses détaillées des performances de vos campagnes email</p>
           </div>
-          <button className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-4 py-2 text-[12px] font-semibold text-gray-700 hover:bg-gray-50">
+          <button className="flex w-fit items-center gap-1.5 rounded-lg border border-gray-200 px-4 py-2 text-[12px] font-semibold text-gray-700 hover:bg-gray-50">
             <Download size={13} /> Exporter
           </button>
         </div>
@@ -123,7 +123,7 @@ export default function AnalyticsEmailPage() {
         </div>
 
         {/* Charts row */}
-        <div className="mb-5 grid grid-cols-2 gap-4">
+        <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2">
           {/* Évolution simulée — visuel uniquement */}
           <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
             <p className="mb-4 text-[13px] font-semibold text-[#1F2937]">Volume des campagnes</p>
@@ -236,18 +236,19 @@ export default function AnalyticsEmailPage() {
         </div>
 
         {/* Top campagnes — données réelles */}
-        <div className="mb-5 rounded-xl border border-gray-100 bg-white p-5 shadow-sm overflow-hidden">
+        <div className="mb-5 rounded-xl border border-gray-100 bg-white p-4 md:p-5 shadow-sm overflow-hidden">
           <p className="mb-4 text-[14px] font-semibold text-[#1F2937]">Top campagnes performantes</p>
           {loading
             ? <div className="flex justify-center py-4"><Loader2 size={20} className="animate-spin text-[#F4511E]" /></div>
             : topCampaigns.length === 0
               ? <p className="py-4 text-center text-[12px] text-gray-400">Envoyez votre première campagne pour voir les stats ici.</p>
               : (
+                <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-50">
                       {['Campagne', 'Envoyés', 'Taux ouverture', 'Taux clic', 'Désabo.'].map(h => (
-                        <th key={h} className="pb-2 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-400">{h}</th>
+                        <th key={h} className="pb-2 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-400 whitespace-nowrap pr-3">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -271,6 +272,7 @@ export default function AnalyticsEmailPage() {
                     })}
                   </tbody>
                 </table>
+                </div>
               )
           }
         </div>

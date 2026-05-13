@@ -1,377 +1,429 @@
 import { useState, useEffect, useCallback } from 'react'
-import { RotateCcw, Send, X, Loader2, CheckCircle2, Clock, XCircle, AlertCircle, Trash2 } from 'lucide-react'
+import {
+  Plus, Play, Pause, Copy, Trash2, Eye,
+  Zap, BarChart2, FlaskConical, TrendingUp, Loader2,
+} from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
+import FlowEditorModal, { type EmailFlowItem, type FlowNode, type FlowEdge, type EmailTemplate } from '../components/FlowEditorModal'
 import apiFetch from '../../../services/api'
 
-interface Campaign {
-  id: number
-  name: string | null
-  sujet: string
-  total_sent: number
-  opens: number
-  sent_at: string | null
-}
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-interface Relance {
+interface Flow {
   id: number
-  campaign_id: number
-  campaign_name: string | null
-  campaign_sujet: string
-  new_subject: string
-  delay_days: number
-  status: 'pending' | 'running' | 'completed' | 'cancelled'
-  scheduled_at: string
-  executed_at: string | null
-  total_sent: number
+  name: string
+  description: string
+  status: 'draft' | 'active' | 'paused'
+  trigger_type: string
+  node_count: number
+  total_contacts: number
+  opens: number
+  clicks: number
   created_at: string
 }
 
-const STATUS_MAP: Record<string, { label: string; color: string; Icon: React.ElementType }> = {
-  pending:   { label: 'Planifiée',  color: '#3B82F6', Icon: Clock },
-  running:   { label: 'En cours',   color: '#F4511E', Icon: Loader2 },
-  completed: { label: 'Exécutée',   color: '#10B981', Icon: CheckCircle2 },
-  cancelled: { label: 'Annulée',    color: '#9CA3AF', Icon: XCircle },
+interface FlowStats {
+  activeFlows: number
+  totalContacts: number
+  openRate: number
+  totalClics: number
 }
 
-function fmt(d: string) {
-  return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+// ── Template flows helpers ────────────────────────────────────────────────────
+
+function buildFlow(emails: { name: string; subject: string }[], delayDays: number): { nodes: FlowNode[]; edges: FlowEdge[] } {
+  const nodes: FlowNode[] = []
+  const edges: FlowEdge[] = []
+  const edgeStyle = { stroke: '#F4511E', strokeWidth: 1.5 }
+  let y = 60
+
+  nodes.push({ id: 't0', type: 'triggerNode', position: { x: 220, y }, data: { nodeType: 'trigger', triggerType: 'subscribe' } })
+  y += 130
+
+  let prev = 't0'
+  emails.forEach((em, i) => {
+    const eid = `em${i}`
+    nodes.push({ id: eid, type: 'sendEmailNode', position: { x: 220, y }, data: { nodeType: 'sendEmail', emailName: em.name, subject: em.subject } })
+    edges.push({ id: `e_${prev}_${eid}`, source: prev, target: eid, animated: true, style: edgeStyle })
+    prev = eid; y += 130
+
+    if (i < emails.length - 1) {
+      const did = `d${i}`
+      nodes.push({ id: did, type: 'delayNode', position: { x: 220, y }, data: { nodeType: 'delay', delayValue: delayDays, delayUnit: 'jours' } })
+      edges.push({ id: `e_${prev}_${did}`, source: prev, target: did, animated: true, style: edgeStyle })
+      prev = did; y += 130
+    }
+  })
+
+  nodes.push({ id: 'end', type: 'endNode', position: { x: 220, y }, data: { nodeType: 'end' } })
+  edges.push({ id: `e_${prev}_end`, source: prev, target: 'end', animated: true, style: edgeStyle })
+
+  return { nodes, edges }
 }
+
+const TEMPLATES = [
+  {
+    id: 'lead-b2b', icon: '🚀', name: 'Lead Nurturing B2B',
+    description: '7 emails éducatifs sur 21 jours', steps: 12, conversion: 18,
+    ...buildFlow([
+      { name: 'Email 1', subject: 'Bienvenue dans notre programme B2B' },
+      { name: 'Email 2', subject: 'Les 3 erreurs que font vos concurrents' },
+      { name: 'Email 3', subject: 'Comment augmenter votre ROI de 40%' },
+      { name: 'Email 4', subject: 'Ce que nos clients disent de nous' },
+      { name: 'Email 5', subject: 'Une offre spéciale, rien que pour vous' },
+      { name: 'Email 6', subject: 'Dernière chance — offre valable 48h' },
+      { name: 'Email 7', subject: 'Merci de nous avoir suivis' },
+    ], 3),
+  },
+  {
+    id: 'onboarding', icon: '🎓', name: 'Onboarding SaaS',
+    description: 'Formation progressive utilisateur', steps: 9, conversion: 65,
+    ...buildFlow([
+      { name: 'Bienvenue', subject: 'Votre compte est prêt — par où commencer ?' },
+      { name: 'Étape 1',   subject: 'Créez votre premier projet en 5 minutes' },
+      { name: 'Étape 2',   subject: 'Invitez votre équipe maintenant' },
+      { name: 'Check-in',  subject: 'Comment se passe votre démarrage ?' },
+    ], 2),
+  },
+  {
+    id: 'reengagement', icon: '🔄', name: 'Réengagement Inactifs',
+    description: 'Reconquête avec offres ciblées', steps: 6, conversion: 22,
+    ...buildFlow([
+      { name: 'Vous nous manquez', subject: 'Cela fait un moment... voici une surprise' },
+      { name: 'Offre spéciale',    subject: '30% de réduction — rien que pour vous' },
+      { name: 'Dernière chance',   subject: 'Voulez-vous rester abonné ?' },
+    ], 5),
+  },
+  {
+    id: 'panier', icon: '🛒', name: 'Panier Abandonné E-commerce',
+    description: 'Relance avec urgence et promo', steps: 5, conversion: 35,
+    ...buildFlow([
+      { name: 'Rappel panier',  subject: 'Vous avez oublié quelque chose !' },
+      { name: 'Urgence stock',  subject: 'Stock limité — finalisez votre commande' },
+      { name: 'Promo express',  subject: '-10% si vous commandez dans les 2h' },
+    ], 1),
+  },
+  {
+    id: 'newsletter', icon: '📰', name: 'Newsletter Automation',
+    description: 'Contenu personnalisé hebdo', steps: 8, conversion: 42,
+    ...buildFlow([
+      { name: 'Newsletter #1', subject: 'Vos actualités de la semaine' },
+      { name: 'Newsletter #2', subject: 'Les tendances du marché cette semaine' },
+      { name: 'Newsletter #3', subject: 'Ressources exclusives pour vous' },
+      { name: 'Newsletter #4', subject: 'Récap mensuel + surprise' },
+    ], 7),
+  },
+  {
+    id: 'vip', icon: '🎁', name: 'Programme VIP',
+    description: 'Parcours clients premium', steps: 11, conversion: 78,
+    ...buildFlow([
+      { name: 'Bienvenue VIP',   subject: 'Vous faites maintenant partie du club VIP !' },
+      { name: 'Avantages VIP',   subject: 'Vos privilèges exclusifs en détail' },
+      { name: 'Offre réservée',  subject: 'Accès prioritaire à notre nouvelle collection' },
+      { name: 'Invitation event', subject: 'Vous êtes invité à notre événement privé' },
+      { name: 'Anniversaire',    subject: 'Joyeux anniversaire — cadeau à l\'intérieur 🎂' },
+    ], 14),
+  },
+]
+
+// ── Status helpers ────────────────────────────────────────────────────────────
+
+const STATUS = {
+  active: { label: 'Actif',     color: 'bg-green-100 text-green-700' },
+  draft:  { label: 'Brouillon', color: 'bg-gray-100 text-gray-600'   },
+  paused: { label: 'En pause',  color: 'bg-amber-100 text-amber-700' },
+}
+
+function fmt(n: number) { return n.toLocaleString('fr-FR') }
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ConstructeurFluxPage() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  const [relances,  setRelances]  = useState<Relance[]>([])
+  const [flows,     setFlows]     = useState<Flow[]>([])
+  const [stats,     setStats]     = useState<FlowStats | null>(null)
+  const [templates, setTemplates] = useState<EmailTemplate[]>([])
   const [loading,   setLoading]   = useState(true)
 
-  // Modal
-  const [showModal,   setShowModal]   = useState(false)
-  const [selCampaign, setSelCampaign] = useState<Campaign | null>(null)
-  const [newSubject,  setNewSubject]  = useState('')
-  const [delayDays,   setDelayDays]   = useState(5)
-  const [saving,      setSaving]      = useState(false)
-  const [formError,   setFormError]   = useState('')
+  // Editor modal
+  const [editorFlow,   setEditorFlow]   = useState<EmailFlowItem | null | undefined>(undefined)
+  const [showEditor,   setShowEditor]   = useState(false)
 
-  // Annulation
-  const [cancelling, setCancelling] = useState<number | null>(null)
+  // In-flight actions
+  const [acting, setActing] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [cRes, rRes] = await Promise.all([
-        apiFetch.get<{ data: Campaign[] }>('/email/campaigns'),
-        apiFetch.get<{ data: Relance[] }>('/email/relances'),
+      const [fRes, sRes, tRes] = await Promise.all([
+        apiFetch.get<{ data: Flow[] }>('/email/flows'),
+        apiFetch.get<{ data: FlowStats }>('/email/flows/stats'),
+        apiFetch.get<{ data: EmailTemplate[] }>('/email/templates'),
       ])
-      // Seules les campagnes "sent" sont éligibles à une relance
-      const sent = (cRes.data ?? []).filter(c => (c as any).status === 'sent')
-      setCampaigns(sent)
-      setRelances(rRes.data ?? [])
-    } catch {
-      // empty state
-    } finally {
-      setLoading(false)
-    }
+      setFlows(fRes.data ?? [])
+      setStats(sRes.data ?? null)
+      setTemplates(tRes.data ?? [])
+    } catch { /* empty state */ }
+    finally { setLoading(false) }
   }, [])
 
   useEffect(() => { load() }, [load])
 
-  const openModal = (c: Campaign) => {
-    setSelCampaign(c)
-    setNewSubject(`Re: ${c.sujet}`)
-    setDelayDays(5)
-    setFormError('')
-    setShowModal(true)
+  const openNew = () => { setEditorFlow(null); setShowEditor(true) }
+
+  const openFromTemplate = (tpl: typeof TEMPLATES[0]) => {
+    setEditorFlow({ name: tpl.name, description: tpl.description, nodes_json: tpl.nodes as FlowNode[], edges_json: tpl.edges as FlowEdge[] })
+    setShowEditor(true)
   }
 
-  const handleCreate = async () => {
-    if (!newSubject.trim()) { setFormError("L'objet de relance est requis"); return }
-    if (!selCampaign) return
-    setSaving(true)
-    setFormError('')
+  const openEdit = async (flow: Flow) => {
     try {
-      await apiFetch.post('/email/relances', {
-        campaignId: selCampaign.id,
-        newSubject: newSubject.trim(),
-        delayDays,
-      })
-      setShowModal(false)
+      const res = await apiFetch.get<{ data: EmailFlowItem }>(`/email/flows/${flow.id}`)
+      setEditorFlow(res.data)
+      setShowEditor(true)
+    } catch { /* ignore */ }
+  }
+
+  const handleStatus = async (flow: Flow) => {
+    const next = flow.status === 'active' ? 'paused' : 'active'
+    setActing(flow.id)
+    try {
+      await apiFetch.put(`/email/flows/${flow.id}/status`, { status: next })
+      setFlows(prev => prev.map(f => f.id === flow.id ? { ...f, status: next } : f))
+    } finally { setActing(null) }
+  }
+
+  const handleDuplicate = async (id: number) => {
+    setActing(id)
+    try {
+      await apiFetch.post(`/email/flows/${id}/duplicate`, {})
       await load()
-    } catch (err: unknown) {
-      setFormError(err instanceof Error ? err.message : 'Erreur lors de la création')
-    } finally {
-      setSaving(false)
-    }
+    } finally { setActing(null) }
   }
 
-  const handleCancel = async (id: number) => {
-    if (!confirm('Annuler cette relance ?')) return
-    setCancelling(id)
+  const handleDelete = async (id: number) => {
+    if (!confirm('Supprimer ce flow ?')) return
+    setActing(id)
     try {
-      await apiFetch.delete(`/email/relances/${id}`)
-      setRelances(prev => prev.map(r => r.id === id ? { ...r, status: 'cancelled' } : r))
-    } finally {
-      setCancelling(null)
-    }
+      await apiFetch.delete(`/email/flows/${id}`)
+      setFlows(prev => prev.filter(f => f.id !== id))
+    } finally { setActing(null) }
   }
-
-  // Campagnes sans relance active (pending ou running)
-  const activeRelanceCampaignIds = new Set(
-    relances.filter(r => r.status === 'pending' || r.status === 'running').map(r => r.campaign_id)
-  )
-  const eligible = campaigns.filter(c => !activeRelanceCampaignIds.has(c.id))
 
   return (
-    <div className="bg-white min-h-full">
-      <div className="px-6 py-5">
+    <div className="min-h-full bg-white">
+      <div className="px-4 py-5 sm:px-6 sm:py-6">
 
-        {/* Header */}
-        <div className="mb-5 flex items-start justify-between">
-          <div>
-            <h1 className="text-[22px] font-bold text-[#1F2937]">Relance automatique</h1>
-            <p className="mt-0.5 text-[13px] text-gray-500">
-              Renvoie automatiquement l'email aux contacts qui ne l'ont pas ouvert après X jours
-            </p>
-          </div>
-        </div>
-
-        {/* Explication */}
-        <div className="mb-6 rounded-xl border border-[#F4511E]/20 bg-orange-50/40 p-4">
-          <div className="flex items-start gap-3">
-            <RotateCcw size={18} className="mt-0.5 shrink-0 text-[#F4511E]" />
+        {/* ── Header ── */}
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F4511E]/10 sm:h-10 sm:w-10">
+              <Zap size={16} className="text-[#F4511E] sm:text-[18px]" />
+            </div>
             <div>
-              <p className="text-[13px] font-semibold text-[#1F2937]">Comment ça marche ?</p>
-              <p className="mt-1 text-[12px] leading-relaxed text-gray-600">
-                Tu choisis une campagne déjà envoyée, tu écris un nouvel objet et tu choisis le délai.
-                Le système attend le nombre de jours choisi, puis envoie automatiquement le même email
-                — avec le nouvel objet — uniquement aux personnes qui ne l'ont pas ouvert.
-                Les personnes qui l'ont déjà ouvert ne reçoivent rien.
-              </p>
+              <h1 className="text-[18px] font-bold text-[#1F2937] sm:text-[22px]">Email Flow Builder</h1>
+              <p className="text-[12px] text-gray-500 sm:text-[13px]">Créez des campagnes email automatisées intelligentes avec l'éditeur visuel</p>
             </div>
           </div>
+          <button
+            onClick={openNew}
+            className="flex w-fit items-center gap-2 rounded-xl bg-[#F4511E] px-4 py-2 text-[12px] font-semibold text-white shadow-sm hover:bg-[#d9400f] transition-colors sm:px-5 sm:py-2.5 sm:text-[13px]"
+          >
+            <Plus size={14} /> Créer un Flow
+          </button>
         </div>
 
-        {/* Campagnes éligibles */}
-        <div className="mb-6 rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-          <div className="border-b border-gray-50 px-5 py-3 flex items-center justify-between">
-            <h2 className="text-[14px] font-semibold text-[#1F2937]">Campagnes éligibles à la relance</h2>
-            <span className="text-[11px] text-gray-400">{eligible.length} campagne{eligible.length !== 1 ? 's' : ''}</span>
+        {/* ── Pourquoi les Email Flows ── */}
+        <div className="mb-6 rounded-2xl border border-[#F4511E]/15 bg-gradient-to-br from-orange-50/60 to-white p-5">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-lg">💡</span>
+            <p className="text-[14px] font-bold text-[#1F2937]">Pourquoi utiliser les Email Flows ?</p>
+          </div>
+          <p className="mb-4 text-[12px] text-gray-500">
+            Les Email Flows automatisent vos campagnes marketing et augmentent drastiquement vos conversions grâce à des parcours personnalisés.
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { Icon: Zap,          color: 'text-blue-600',   bg: 'bg-blue-50',   title: 'Email Drip',      sub: 'Séquence goutte-à-goutte' },
+              { Icon: TrendingUp,   color: 'text-purple-600', bg: 'bg-purple-50', title: 'Comportemental',  sub: 'Basé sur les actions' },
+              { Icon: FlaskConical, color: 'text-pink-600',   bg: 'bg-pink-50',   title: 'A/B Testing',     sub: 'Optimisation continue' },
+              { Icon: BarChart2,    color: 'text-green-600',  bg: 'bg-green-50',  title: 'Analytics',       sub: 'Suivi en temps réel' },
+            ].map(({ Icon, color, bg, title, sub }) => (
+              <div key={title} className={`flex items-start gap-3 rounded-xl ${bg} p-3`}>
+                <Icon size={16} className={`mt-0.5 shrink-0 ${color}`} />
+                <div>
+                  <p className="text-[12px] font-semibold text-[#1F2937]">{title}</p>
+                  <p className="text-[11px] text-gray-500">{sub}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Stats ── */}
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Flows actifs',      value: loading ? '—' : String(stats?.activeFlows ?? 0) },
+            { label: 'Total contacts',    value: loading ? '—' : fmt(stats?.totalContacts ?? 0) },
+            { label: "Taux d'ouverture",  value: loading ? '—' : `${stats?.openRate ?? 0}%` },
+            { label: 'Total clics',       value: loading ? '—' : fmt(stats?.totalClics ?? 0) },
+          ].map(({ label, value }) => (
+            <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+              <p className="text-[11px] text-gray-500">{label}</p>
+              <p className="mt-1 text-[22px] font-bold text-[#1F2937]">{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Templates prédéfinis ── */}
+        <div className="mb-6 rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+          <div className="border-b border-gray-50 px-5 py-4">
+            <h2 className="text-[15px] font-bold text-[#1F2937]">Templates de Flow Email prédéfinis</h2>
+            <p className="mt-0.5 text-[12px] text-gray-400">Démarrez en un clic avec des séquences éprouvées</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
+            {TEMPLATES.map(tpl => (
+              <div key={tpl.id} className="rounded-xl border border-gray-100 p-4 hover:border-[#F4511E]/30 hover:shadow-sm transition-all">
+                <div className="mb-3 flex items-start gap-3">
+                  <span className="text-2xl">{tpl.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-bold text-[#1F2937] truncate">{tpl.name}</p>
+                    <p className="text-[11px] text-gray-500">{tpl.description}</p>
+                  </div>
+                </div>
+                <div className="mb-3 flex items-center gap-3">
+                  <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[10px] font-medium text-gray-600">
+                    {tpl.steps} étapes
+                  </span>
+                  <span className="text-[11px] font-semibold text-green-600">{tpl.conversion}% conversion</span>
+                </div>
+                <button
+                  onClick={() => openFromTemplate(tpl)}
+                  className="w-full rounded-lg border border-[#F4511E]/30 bg-[#FFF7F5] py-2 text-[12px] font-semibold text-[#F4511E] hover:bg-[#F4511E] hover:text-white transition-colors"
+                >
+                  Utiliser ce template
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Mes Flows Email ── */}
+        <div className="mb-8 rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+          <div className="border-b border-gray-50 px-5 py-4 flex items-center justify-between">
+            <h2 className="text-[15px] font-bold text-[#1F2937]">Mes Flows Email</h2>
+            <span className="text-[11px] text-gray-400">{flows.length} flow{flows.length !== 1 ? 's' : ''}</span>
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 size={20} className="animate-spin text-[#F4511E]" />
+            <div className="flex items-center justify-center py-14">
+              <Loader2 size={22} className="animate-spin text-[#F4511E]" />
             </div>
-          ) : eligible.length === 0 ? (
-            <p className="px-5 py-8 text-center text-[12px] text-gray-400">
-              Aucune campagne envoyée disponible — envoyez d'abord une campagne depuis l'éditeur.
-            </p>
+          ) : flows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+                <Zap size={20} className="text-gray-400" />
+              </div>
+              <p className="text-[13px] font-semibold text-gray-500">Aucun flow créé</p>
+              <p className="mt-1 text-[12px] text-gray-400">Cliquez sur "Créer un Flow" ou utilisez un template</p>
+            </div>
           ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-50 bg-gray-50/60">
-                  {['Campagne', 'Envoyés', 'Ouvertures', 'Non ouverts', ''].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {eligible.map(c => {
-                  const nonOpeners = c.total_sent - c.opens
-                  return (
-                    <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                      <td className="px-4 py-3">
-                        <p className="text-[12px] font-semibold text-[#1F2937]">{c.name ?? c.sujet}</p>
-                        {c.name && <p className="text-[11px] text-gray-400 truncate max-w-[200px]">{c.sujet}</p>}
-                      </td>
-                      <td className="px-4 py-3 text-[12px] text-gray-700">{c.total_sent.toLocaleString('fr-FR')}</td>
-                      <td className="px-4 py-3 text-[12px] text-blue-500">{c.opens.toLocaleString('fr-FR')}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-[12px] font-semibold ${nonOpeners > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
-                          {nonOpeners.toLocaleString('fr-FR')}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => openModal(c)}
-                          disabled={nonOpeners === 0}
-                          className="flex items-center gap-1.5 rounded-lg bg-[#F4511E] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#d9400f] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <RotateCcw size={11} /> Programmer la relance
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Relances existantes */}
-        <div className="mb-8 rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-          <div className="border-b border-gray-50 px-5 py-3">
-            <h2 className="text-[14px] font-semibold text-[#1F2937]">Historique des relances</h2>
-          </div>
-
-          {!loading && relances.length === 0 ? (
-            <p className="px-5 py-8 text-center text-[12px] text-gray-400">Aucune relance créée pour l'instant.</p>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-50 bg-gray-50/60">
-                  {['Campagne', 'Nouvel objet', 'Délai', 'Statut', 'Planifiée le', 'Envoyés', ''].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {relances.map(r => {
-                  const { label, color, Icon } = STATUS_MAP[r.status] ?? STATUS_MAP.cancelled
-                  return (
-                    <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                      <td className="px-4 py-3">
-                        <p className="text-[12px] font-semibold text-[#1F2937]">{r.campaign_name ?? r.campaign_sujet}</p>
-                      </td>
-                      <td className="px-4 py-3 text-[12px] text-gray-700 max-w-[180px] truncate">{r.new_subject}</td>
-                      <td className="px-4 py-3 text-[12px] text-gray-600">{r.delay_days}j</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white" style={{ backgroundColor: color }}>
-                          <Icon size={10} className={r.status === 'running' ? 'animate-spin' : ''} />
-                          {label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-[11px] text-gray-500">{fmt(r.scheduled_at)}</td>
-                      <td className="px-4 py-3 text-[12px] text-gray-700">
-                        {r.status === 'completed' ? r.total_sent.toLocaleString('fr-FR') : '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        {r.status === 'pending' && (
-                          <button
-                            onClick={() => handleCancel(r.id)}
-                            disabled={cancelling === r.id}
-                            className="rounded p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors"
-                          >
-                            {cancelling === r.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                          </button>
+            <div className="divide-y divide-gray-50">
+              {flows.map(flow => {
+                const st = STATUS[flow.status]
+                const openRate = flow.total_contacts > 0 ? Math.round((flow.opens / flow.total_contacts) * 100 * 10) / 10 : 0
+                return (
+                  <div key={flow.id} className="px-4 py-4 hover:bg-gray-50/50 transition-colors sm:px-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3 sm:flex-nowrap sm:gap-4">
+                      {/* Info */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="text-[14px] font-bold text-[#1F2937] truncate">{flow.name}</p>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${st.color}`}>{st.label}</span>
+                        </div>
+                        {flow.description && (
+                          <p className="text-[12px] text-gray-500 truncate">{flow.description}</p>
                         )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                        {/* Stats row */}
+                        <div className="mt-2 flex flex-wrap gap-4">
+                          {[
+                            { label: 'Étapes',       value: `${flow.node_count} nœuds` },
+                            { label: 'Contacts',     value: fmt(flow.total_contacts) },
+                            { label: 'Ouvertures',   value: fmt(flow.opens),  color: 'text-blue-500' },
+                            { label: 'Clics',        value: fmt(flow.clicks), color: 'text-green-500' },
+                            { label: 'Taux ouverture', value: `${openRate}%` },
+                          ].map(({ label, value, color }) => (
+                            <div key={label}>
+                              <p className="text-[10px] text-gray-400">{label}</p>
+                              <p className={`text-[13px] font-bold ${color ?? 'text-[#1F2937]'}`}>{value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {acting === flow.id
+                          ? <Loader2 size={16} className="animate-spin text-gray-400" />
+                          : <>
+                            <button
+                              onClick={() => openEdit(flow)}
+                              className="rounded-lg bg-[#F4511E] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#d9400f] transition-colors"
+                            >
+                              Modifier
+                            </button>
+                            <button
+                              onClick={() => {/* preview */}}
+                              title="Prévisualiser"
+                              className="rounded-full border border-gray-200 p-1.5 text-gray-400 hover:bg-gray-100 transition-colors"
+                            >
+                              <Eye size={13} />
+                            </button>
+                            <button
+                              onClick={() => handleDuplicate(flow.id)}
+                              title="Dupliquer"
+                              className="rounded-full border border-gray-200 p-1.5 text-gray-400 hover:bg-gray-100 transition-colors"
+                            >
+                              <Copy size={13} />
+                            </button>
+                            <button
+                              onClick={() => handleStatus(flow)}
+                              title={flow.status === 'active' ? 'Mettre en pause' : 'Activer'}
+                              className={`rounded-full border p-1.5 transition-colors ${
+                                flow.status === 'active'
+                                  ? 'border-amber-200 text-amber-500 hover:bg-amber-50'
+                                  : 'border-green-200 text-green-500 hover:bg-green-50'
+                              }`}
+                            >
+                              {flow.status === 'active' ? <Pause size={13} /> : <Play size={13} />}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(flow.id)}
+                              title="Supprimer"
+                              className="rounded-full border border-red-100 p-1.5 text-red-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           )}
         </div>
       </div>
 
       <DashboardFooter />
 
-      {/* Modal création relance */}
-      {showModal && selCampaign && (
-        <>
-          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
-
-              <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F4511E]/10">
-                    <RotateCcw size={15} className="text-[#F4511E]" />
-                  </div>
-                  <div>
-                    <h2 className="text-[14px] font-bold text-[#1F2937]">Programmer une relance</h2>
-                    <p className="text-[11px] text-gray-400">Pour les non-ouvreurs uniquement</p>
-                  </div>
-                </div>
-                <button onClick={() => setShowModal(false)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100">
-                  <X size={15} />
-                </button>
-              </div>
-
-              <div className="px-6 py-5 space-y-4">
-                {/* Campagne sélectionnée */}
-                <div className="rounded-lg bg-gray-50 px-4 py-3">
-                  <p className="text-[11px] text-gray-500">Campagne</p>
-                  <p className="text-[13px] font-semibold text-[#1F2937]">{selCampaign.name ?? selCampaign.sujet}</p>
-                  <p className="text-[11px] text-orange-500">
-                    {(selCampaign.total_sent - selCampaign.opens).toLocaleString('fr-FR')} non-ouvreur{selCampaign.total_sent - selCampaign.opens > 1 ? 's' : ''} recevront la relance
-                  </p>
-                </div>
-
-                {/* Nouvel objet */}
-                <div>
-                  <label className="mb-1 block text-[11px] font-medium text-gray-600">
-                    Nouvel objet de l'email <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={newSubject}
-                    onChange={e => { setNewSubject(e.target.value); setFormError('') }}
-                    placeholder="Ex: Au cas où vous avez raté notre message..."
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-[#F4511E]"
-                  />
-                  <p className="mt-1 text-[10px] text-gray-400">Utilisez un objet différent — c'est ce qui incite à ouvrir la 2e fois</p>
-                </div>
-
-                {/* Délai */}
-                <div>
-                  <label className="mb-1 block text-[11px] font-medium text-gray-600">Envoyer après</label>
-                  <div className="flex gap-2">
-                    {/* 0 = mode test : exécution immédiate côté serveur */}
-                    {([0, 3, 5, 7, 10] as const).map(d => (
-                      <button
-                        key={d}
-                        onClick={() => setDelayDays(d)}
-                        className={`flex-1 rounded-lg border py-2 text-[12px] font-medium transition-all ${
-                          delayDays === d
-                            ? d === 0 ? 'border-purple-400 bg-purple-50 text-purple-600' : 'border-[#F4511E] bg-[#FFF7F5] text-[#F4511E]'
-                            : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                        }`}
-                      >
-                        {d === 0 ? '1 min 🧪' : `${d}j`}
-                      </button>
-                    ))}
-                  </div>
-                  {delayDays === 0 && (
-                    <p className="mt-1 text-[10px] text-purple-500">Mode test — la relance s'exécute dans ~1 minute, ignorant ceux qui ont ouvert.</p>
-                  )}
-                </div>
-
-                {/* Récap */}
-                <div className="flex items-start gap-2 rounded-lg bg-blue-50 px-3 py-2.5">
-                  <Send size={12} className="mt-0.5 shrink-0 text-blue-400" />
-                  <p className="text-[11px] text-blue-600">
-                    {delayDays === 0
-                      ? <>La relance sera envoyée <strong>dans ~1 minute</strong> aux non-ouvreurs (mode test).</>
-                      : <>La relance sera envoyée automatiquement dans <strong>{delayDays} jours</strong> aux contacts qui n'auront pas ouvert l'email original.</>
-                    }
-                  </p>
-                </div>
-
-                {formError && (
-                  <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600">
-                    <AlertCircle size={13} className="shrink-0" />
-                    {formError}
-                  </div>
-                )}
-
-                <div className="flex gap-3 pt-1">
-                  <button
-                    onClick={() => setShowModal(false)}
-                    className="flex-1 rounded-lg border border-gray-200 py-2 text-[12px] font-medium text-gray-600 hover:bg-gray-50"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    onClick={handleCreate}
-                    disabled={saving}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#F4511E] py-2 text-[12px] font-semibold text-white hover:bg-[#d9400f] disabled:opacity-60"
-                  >
-                    {saving ? <><Loader2 size={13} className="animate-spin" /> Création...</> : <><RotateCcw size={13} /> Planifier la relance</>}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
+      {showEditor && (
+        <FlowEditorModal
+          flow={editorFlow}
+          templates={templates}
+          onClose={() => setShowEditor(false)}
+          onSaved={load}
+        />
       )}
     </div>
   )

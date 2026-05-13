@@ -17,29 +17,35 @@ const emailQueue = new Bull('email-campaign', {
 })
 
 export interface EmailJobData {
-  messageId: number
-  campaignId: number
+  messageId?: number   // absent pour les emails de flow
+  campaignId?: number  // absent pour les emails de flow
+  flowId?: number      // présent pour les emails de flow
+  tenantId?: number    // pour résoudre le bon SMTP du tenant
   to: string
-  fromName: string
+  fromName?: string
   subject: string
   html: string
 }
 
 // Max 3 emails en parallèle
 emailQueue.process(3, async (job) => {
-  const { messageId, campaignId, to, fromName, subject, html }: EmailJobData = job.data
+  const { messageId, campaignId, tenantId, to, fromName, subject, html }: EmailJobData = job.data
 
   try {
-    const brevoMsgId = await mailerService.send({ to, subject, html, fromName, messageId })
+    const brevoMsgId = await mailerService.send({ to, subject, html, fromName, messageId, tenantId })
 
-    await pool.execute(
-      `UPDATE email_messages SET status = 'sent', sent_at = NOW(), brevo_message_id = ?, updated_at = NOW() WHERE id = ?`,
-      [brevoMsgId, messageId]
-    )
-    await pool.execute(
-      `UPDATE email_campaigns SET total_sent = total_sent + 1, updated_at = NOW() WHERE id = ?`,
-      [campaignId]
-    )
+    if (messageId) {
+      await pool.execute(
+        `UPDATE email_messages SET status = 'sent', sent_at = NOW(), brevo_message_id = ?, updated_at = NOW() WHERE id = ?`,
+        [brevoMsgId, messageId]
+      )
+    }
+    if (campaignId) {
+      await pool.execute(
+        `UPDATE email_campaigns SET total_sent = total_sent + 1, updated_at = NOW() WHERE id = ?`,
+        [campaignId]
+      )
+    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Erreur inconnue'
 
@@ -47,10 +53,12 @@ emailQueue.process(3, async (job) => {
     // NE PAS incrémenter total_failed ici — Bull va retenter jusqu'à 3 fois,
     // ce qui causerait total_failed = 3 pour un seul email. Le compteur est
     // incrémenté dans queue.on('failed') qui tire une seule fois après épuisement.
-    await pool.execute(
-      `UPDATE email_messages SET status = 'failed', error_message = ?, updated_at = NOW() WHERE id = ?`,
-      [msg, messageId]
-    ).catch(() => {})
+    if (messageId) {
+      await pool.execute(
+        `UPDATE email_messages SET status = 'failed', error_message = ?, updated_at = NOW() WHERE id = ?`,
+        [msg, messageId]
+      ).catch(() => {})
+    }
 
     throw err // déclenche le retry Bull
   }
@@ -70,16 +78,20 @@ emailQueue.on('failed', async (job, err) => {
   console.error(`[EMAIL] ❌ ${to} (${job.attemptsMade} tentatives) : ${err.message}`)
 
   // Un seul incrément ici, peu importe le nombre de retries
-  await Promise.all([
-    pool.execute(
+  const updates: Promise<unknown>[] = []
+  if (campaignId) {
+    updates.push(pool.execute(
       `UPDATE email_campaigns SET total_failed = total_failed + 1, updated_at = NOW() WHERE id = ?`,
       [campaignId]
-    ),
-    pool.execute(
+    ))
+  }
+  if (messageId) {
+    updates.push(pool.execute(
       `UPDATE email_messages SET status = 'failed', error_message = ?, updated_at = NOW() WHERE id = ?`,
       [err.message, messageId]
-    ),
-  ]).catch(() => {})
+    ))
+  }
+  await Promise.all(updates).catch(() => {})
 })
 
 emailQueue.on('drained', async () => {
@@ -121,5 +133,61 @@ relanceQueue.on('error', (err) => {
 })
 relanceQueue.on('completed', () => console.log('[RELANCE] ✅ Vérification terminée'))
 relanceQueue.on('failed', (_job, err) => console.error('[RELANCE] ❌', err.message))
+
+// Job récurrent — évalue les tests A/B arrivés à échéance toutes les heures
+const abTestQueue = new Bull('ab-test-evaluator', {
+  redis: {
+    host: process.env.REDIS_HOST ?? 'localhost',
+    port: Number(process.env.REDIS_PORT ?? 6379),
+    password: process.env.REDIS_PASSWORD || undefined,
+  },
+})
+
+abTestQueue.process('evaluate-ab-tests', 1, async () => {
+  const { emailService } = await import('../services/email.service')
+  await emailService.executePendingAbTests()
+})
+
+async function scheduleAbTestCheck() {
+  const jobs = await abTestQueue.getRepeatableJobs()
+  const alreadyScheduled = jobs.some(j => j.name === 'evaluate-ab-tests')
+  if (!alreadyScheduled) {
+    await abTestQueue.add('evaluate-ab-tests', {}, { repeat: { every: 60 * 60 * 1000 }, removeOnComplete: true })
+    console.log('[AB TEST] Job horaire démarré')
+  }
+}
+scheduleAbTestCheck().catch(console.error)
+
+abTestQueue.on('error', (err) => console.warn('[AB TEST] Redis non disponible :', err.message))
+abTestQueue.on('completed', () => console.log('[AB TEST] ✅ Évaluation terminée'))
+abTestQueue.on('failed', (_job, err) => console.error('[AB TEST] ❌', err.message))
+
+// ── Flow runner — toutes les 15 minutes ─────────────────────────────────────
+
+const flowQueue = new Bull('email-flow-runner', {
+  redis: {
+    host:     process.env.REDIS_HOST     ?? 'localhost',
+    port:     Number(process.env.REDIS_PORT ?? 6379),
+    password: process.env.REDIS_PASSWORD || undefined,
+  },
+})
+
+flowQueue.process('run-flows', 1, async () => {
+  const { emailService } = await import('../services/email.service')
+  await emailService.executeFlows()
+})
+
+async function scheduleFlowRunner() {
+  const jobs = await flowQueue.getRepeatableJobs()
+  if (!jobs.some(j => j.name === 'run-flows')) {
+    await flowQueue.add('run-flows', {}, { repeat: { every: 15 * 60 * 1000 }, removeOnComplete: true })
+    console.log('[FLOW] Job 15min démarré')
+  }
+}
+scheduleFlowRunner().catch(console.error)
+
+flowQueue.on('error',     (err)       => console.warn('[FLOW] Redis non disponible :', err.message))
+flowQueue.on('completed', ()          => console.log('[FLOW] ✅ Exécution terminée'))
+flowQueue.on('failed',    (_job, err) => console.error('[FLOW] ❌', err.message))
 
 export { emailQueue }

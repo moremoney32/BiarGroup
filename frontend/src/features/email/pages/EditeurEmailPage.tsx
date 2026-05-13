@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react
 import { useLocation } from 'react-router-dom'
 import {
   Monitor, Smartphone, Eye, Save, Send, BookMarked,
-  Type, Image as ImageIcon, Square, Share2, Code2,
+  Type, Image as ImageIcon, Square, Share2, Code2, Minus, ChevronDown,
   Trash2, AlertCircle, CheckCircle2, Upload, X, Loader2,
   Bold, Italic, Underline as UnderlineIcon, Link, AlignLeft, AlignCenter, AlignRight, List,
 } from 'lucide-react'
@@ -16,6 +16,7 @@ import ContactGestionModal, { type ContactGroup } from '../components/ContactGes
 import PlanificationModal from '../components/PlanificationModal'
 import apiFetch from '../../../services/api'
 import PreviewEmailModal from '../components/PreviewEmailModal'
+import AbTestModal from '../components/AbTestModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,12 +39,12 @@ const BLOCK_DEFS: { type: BlockType; label: string; Icon: React.ElementType; tip
   { type: 'texte',      label: 'Texte',          Icon: Type,      tip: 'Paragraphe de texte' },
   { type: 'image',      label: 'Image',           Icon: ImageIcon, tip: 'Photo ou bannière' },
   { type: 'bouton',     label: 'Bouton (CTA)',    Icon: Square,    tip: 'Lien cliquable : "Acheter", "S\'inscrire"...' },
-  // { type: 'separateur', label: 'Séparateur',   Icon: Minus,     tip: 'Ligne de séparation' },
+  { type: 'separateur', label: 'Séparateur',    Icon: Minus,     tip: 'Ligne de séparation' },
   { type: 'reseaux',    label: 'Réseaux sociaux', Icon: Share2,    tip: 'Icônes Facebook, LinkedIn...' },
   { type: 'html',       label: 'HTML',            Icon: Code2,     tip: 'Bloc HTML personnalisé' },
 ]
 
-const VARS = ['{{prenom}}', '{{nom}}', '{{email}}', '{{entreprise}}']
+const VARS_BASE = ['{{prenom}}', '{{nom}}', '{{email}}', '{{entreprise}}']
 
 const SOCIAL = [
   { label: 'f',  color: '#1877f2' },
@@ -397,15 +398,44 @@ export default function EditeurEmailPage() {
   const canvasRef   = useRef<HTMLDivElement>(null)
   const blockRefs   = useRef<Record<string, HTMLDivElement | null>>({})
 
-  const [selectedGroups, setSelectedGroups] = useState<ContactGroup[]>([])
+  const [selectedGroups,     setSelectedGroups]     = useState<ContactGroup[]>([])
+  const [selectedSegmentIds, setSelectedSegmentIds] = useState<number[]>([])
 
-  const [showContacts, setShowContacts] = useState(false)
-  const [showPlanif,   setShowPlanif]   = useState(false)
-  const [showPreview,  setShowPreview]  = useState(false)
+  const [showContacts,   setShowContacts]   = useState(false)
+  const [showPlanif,     setShowPlanif]     = useState(false)
+  const [showPreview,    setShowPreview]    = useState(false)
+  const [showAbTest,     setShowAbTest]     = useState(false)
+  const [showMobileVars, setShowMobileVars] = useState(false)
+
+  // Config email
+  const [emailWidth,  setEmailWidth]  = useState<'500' | '600' | '700'>('600')
+  const [bgColor,     setBgColor]     = useState('#ffffff')
+
+  // RGPD
+  const [rgpd, setRgpd] = useState({
+    lienDesinscription: true,
+    adressePostale:     true,
+    optInUniquement:    false,
+  })
 
   const [sendError,  setSendError]  = useState('')
   const [savedMsg,   setSavedMsg]   = useState(false)
+  const [customVars, setCustomVars] = useState<string[]>([])
 
+  const EXCLUDED_VARS = new Set(['age', 'genre', 'commune', 'date_inscription', 'date inscription'])
+
+  // Charger les noms de custom_fields du tenant pour les proposer comme variables
+  useEffect(() => {
+    import('../../../services/api').then(({ default: api }) => {
+      api.get<{ data: string[] }>('/contacts/fields')
+        .then(res => setCustomVars(
+          (res.data ?? [])
+            .filter((k: string) => !EXCLUDED_VARS.has(k))
+            .map((k: string) => `{{${k}}}`)
+        ))
+        .catch(() => {})
+    })
+  }, [])
 
   // ── Template save ─────────────────────────────────────────────────────────────
   const [showTemplateSave,  setShowTemplateSave]  = useState(false)
@@ -471,6 +501,7 @@ export default function EditeurEmailPage() {
     setBlocks(INITIAL_BLOCKS)
     setSelectedBlock(null)
     setSelectedGroups([])
+    setSelectedSegmentIds([])
     setLastCaret(null)
     setSendError('')
     setSavedMsg(false)
@@ -537,6 +568,8 @@ export default function EditeurEmailPage() {
     setTimeout(() => setSavedMsg(false), 3000)
   }
 
+  const totalDestinataires = selectedGroups.reduce((a, g) => a + g.contacts.length, 0) + selectedSegmentIds.length
+
   const handleSend = () => {
     if (!nomCampagne.trim()) {
       setSendError('Veuillez renseigner le nom de la campagne avant d\'envoyer.')
@@ -554,18 +587,18 @@ export default function EditeurEmailPage() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="px-6 py-5">
+      <div className="px-4 py-4 sm:px-6 sm:py-5">
 
         {/* ── Header ── */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-[18px] font-bold text-[#1F2937]">Ma nouvelle campagne</h1>
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <h1 className="text-[16px] font-bold text-[#1F2937] sm:text-[18px]">Ma nouvelle campagne</h1>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             {savedMsg && (
               <span className="flex items-center gap-1.5 rounded-lg bg-green-50 border border-green-200 px-3 py-1.5 text-[11px] text-green-700">
                 <CheckCircle2 size={13} />
                 Sauvegardé — {blocks.length} bloc{blocks.length > 1 ? 's' : ''}
-                {selectedGroups.length > 0 && ` · ${selectedGroups.length} groupe${selectedGroups.length > 1 ? 's' : ''}`}
+                {totalDestinataires > 0 && ` · ${totalDestinataires} destinataire${totalDestinataires > 1 ? 's' : ''}`}
               </span>
             )}
             {templateSaved && (
@@ -655,7 +688,7 @@ export default function EditeurEmailPage() {
         )}
 
         {/* ── Champs campagne ── */}
-        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3">
           <div>
             <label className="mb-1 block text-[11px] font-medium text-gray-600">Nom de la campagne *</label>
             <input value={nomCampagne} onChange={e => { setNomCampagne(e.target.value); setSendError('') }}
@@ -684,41 +717,83 @@ export default function EditeurEmailPage() {
           </div>
         </div>
 
-        {/* ── Layout 3 colonnes ── */}
-        <div className="overflow-x-auto">
-        <div className="flex gap-4 min-w-[640px]">
+        {/* ── Layout : empilé mobile / 3 colonnes desktop ── */}
+        <div className="flex flex-col gap-3 md:flex-row md:gap-4">
 
           {/* ── Colonne gauche — Blocs ── */}
-          <div className="w-44 shrink-0 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <p className="mb-3 text-[12px] font-semibold text-[#1F2937]">Blocs disponibles</p>
-            <div className="space-y-2">
+          <div className="md:w-44 md:shrink-0 rounded-xl border border-gray-100 bg-white p-3 md:p-4 shadow-sm">
+            <p className="mb-2 text-[12px] font-semibold text-[#1F2937]">Blocs disponibles</p>
+
+            {/* Mobile : scroll horizontal | Desktop : liste verticale */}
+            <div className="flex gap-1.5 overflow-x-auto pb-1 md:flex-col md:overflow-x-visible md:pb-0 md:gap-0 md:space-y-2">
               {BLOCK_DEFS.map(({ type, label, Icon, tip }) => (
                 <button key={type} onClick={() => addBlock(type)} title={tip}
-                  className="flex w-full items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-left text-[12px] text-gray-600 hover:border-[#F4511E]/30 hover:bg-orange-50">
+                  className="flex shrink-0 items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-[12px] text-gray-600 whitespace-nowrap hover:border-[#F4511E]/30 hover:bg-orange-50 md:w-full md:whitespace-normal md:text-left">
                   <Icon size={13} className="shrink-0 text-gray-400" />
                   <span>{label}</span>
                 </button>
               ))}
             </div>
 
-            <p className="mb-1 mt-4 text-[12px] font-semibold text-[#1F2937]">Variables dynamiques</p>
-            <p className="mb-2 text-[10px] leading-relaxed text-gray-400">
-              Personnalise l'email par destinataire. Ex : "Bonjour {'{{prenom}}'}," devient "Bonjour Jean," pour Jean et "Bonjour Marie," pour Marie.
-            </p>
-            <div className="space-y-1.5">
-              {VARS.map(v => (
-                <button key={v} onClick={() => insertVariable(v)}
-                  className="w-full rounded-lg bg-[#F4511E] px-3 py-1.5 text-left font-mono text-[11px] font-medium text-white hover:bg-[#d9400f]">
-                  {v}
-                </button>
-              ))}
+            {/* Variables — toggle sur mobile, toujours visible sur desktop */}
+            <div className="mt-3 md:mt-4">
+              <button
+                className="flex w-full items-center justify-between text-[12px] font-semibold text-[#1F2937] md:cursor-default md:pointer-events-none"
+                onClick={() => setShowMobileVars(v => !v)}
+              >
+                <span>Variables dynamiques</span>
+                <ChevronDown size={13} className={`text-gray-400 transition-transform md:hidden ${showMobileVars ? 'rotate-180' : ''}`} />
+              </button>
+              <div className={`${showMobileVars ? 'block' : 'hidden'} md:block`}>
+                <p className="mb-2 mt-1 text-[10px] leading-relaxed text-gray-400">
+                  Ex : "Bonjour {'{{prenom}}'}," → "Bonjour Jean," par contact.
+                </p>
+                <div className="flex flex-wrap gap-1 md:flex-col md:gap-0 md:space-y-1.5">
+                  {[...VARS_BASE, ...customVars].map(v => (
+                    <button key={v} onClick={() => insertVariable(v)}
+                      className="rounded-lg px-2.5 py-1.5 text-left font-mono text-[11px] font-medium text-white hover:opacity-90 md:w-full md:px-3 bg-[#F4511E]"
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Configuration — desktop seulement dans ce panneau */}
+                <div className="mt-4 hidden border-t border-gray-100 pt-4 md:block">
+                  <p className="mb-3 text-[12px] font-semibold text-[#1F2937]">Configuration</p>
+                  <label className="mb-1 block text-[10px] font-medium text-gray-500">Largeur email</label>
+                  <div className="relative mb-3">
+                    <select
+                      value={emailWidth}
+                      onChange={e => setEmailWidth(e.target.value as '500' | '600' | '700')}
+                      className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-7 text-[11px] text-gray-700 outline-none focus:border-[#F4511E]/40"
+                    >
+                      <option value="600">600px (Standard)</option>
+                      <option value="500">500px (Compact)</option>
+                      <option value="700">700px (Large)</option>
+                    </select>
+                    <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                  </div>
+                  <label className="mb-1 block text-[10px] font-medium text-gray-500">Couleur de fond</label>
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)}
+                      className="h-8 w-8 cursor-pointer rounded-lg border border-gray-200 p-0.5" />
+                    <input type="text" value={bgColor} onChange={e => setBgColor(e.target.value)}
+                      className="flex-1 rounded-lg border border-gray-200 px-2 py-1.5 font-mono text-[11px] text-gray-700 outline-none focus:border-[#F4511E]/40"
+                      placeholder="#ffffff" />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* ── Centre — Canvas email ── */}
-          <div ref={canvasRef} className="flex-1 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50"
+          <div ref={canvasRef} className="min-h-[300px] md:flex-1 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50"
             onClick={() => setSelectedBlock(null)}>
-            <div className={`mx-auto my-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all ${viewMode === 'mobile' ? 'max-w-[375px]' : 'max-w-full'}`}>
+            <div
+              className="mx-auto my-6 overflow-hidden rounded-xl border border-gray-200 shadow-sm transition-all"
+              style={{ maxWidth: viewMode === 'mobile' ? '375px' : `${emailWidth}px`, backgroundColor: bgColor || '#ffffff' }}
+            >
 
               {/* Header email */}
               <div className="bg-[#F4511E] px-6 py-5 text-center">
@@ -852,60 +927,93 @@ export default function EditeurEmailPage() {
           </div>
 
           {/* ── Colonne droite — Panneaux ── */}
-          <div className="w-52 shrink-0 space-y-3">
+          {/* Mobile : grille 2 col | Desktop : colonne 208px */}
+          <div className="grid grid-cols-2 gap-2 md:w-52 md:shrink-0 md:flex md:flex-col md:gap-3">
 
             {/* Test A/B */}
-            <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-base">🔬</span>
-                <p className="text-[12px] font-semibold text-[#F4511E]">Test A/B</p>
+            <div className="rounded-xl border border-gray-100 bg-white p-3 md:p-4 shadow-sm">
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <span className="text-sm md:text-base">🔬</span>
+                <p className="text-[11px] md:text-[12px] font-semibold text-[#F4511E]">Test A/B</p>
               </div>
-              <p className="mb-2 text-[11px] text-gray-500">Testez différents objets ou contenus</p>
-              <button className="w-full rounded-lg bg-[#F4511E] py-1.5 text-[11px] font-semibold text-white opacity-60 cursor-not-allowed">
-                Configurer Test A/B
+              <p className="mb-2 hidden text-[11px] text-gray-500 md:block">Testez différents objets ou contenus</p>
+              <button
+                onClick={() => setShowAbTest(true)}
+                className="w-full rounded-lg bg-[#F4511E] py-1.5 text-[11px] font-semibold text-white hover:bg-[#d43c10] transition-colors"
+              >
+                Test A/B
               </button>
             </div>
 
             {/* Segmentation */}
-            <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-base">🎯</span>
-                <p className="text-[12px] font-semibold text-[#F4511E]">Segmentation</p>
+            <div className="rounded-xl border border-gray-100 bg-white p-3 md:p-4 shadow-sm">
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <span className="text-sm md:text-base">🎯</span>
+                <p className="text-[11px] md:text-[12px] font-semibold text-[#F4511E]">Destinataires</p>
               </div>
-              <p className="mb-2 text-[11px] text-gray-500">Choisissez vos destinataires</p>
+              <p className="mb-2 hidden text-[11px] text-gray-500 md:block">
+                {totalDestinataires > 0
+                  ? <span className="font-semibold text-green-600">{totalDestinataires} sélectionné{totalDestinataires > 1 ? 's' : ''}</span>
+                  : 'Groupes, segments ou contacts'}
+              </p>
+              {totalDestinataires > 0 && (
+                <p className="mb-1.5 text-[10px] font-semibold text-green-600 md:hidden">{totalDestinataires} dest.</p>
+              )}
               <button onClick={() => setShowContacts(true)}
                 className="w-full rounded-lg bg-green-500 py-1.5 text-[11px] font-semibold text-white hover:bg-green-600">
-                Sélectionner segments
+                Sélectionner
               </button>
             </div>
 
             {/* Planification */}
-            <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-base">📅</span>
-                <p className="text-[12px] font-semibold text-[#F4511E]">Planification</p>
+            <div className="rounded-xl border border-gray-100 bg-white p-3 md:p-4 shadow-sm">
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <span className="text-sm md:text-base">📅</span>
+                <p className="text-[11px] md:text-[12px] font-semibold text-[#F4511E]">Planification</p>
               </div>
-              <p className="mb-2 text-[11px] text-gray-500">Envoi immédiat ou programmé</p>
+              <p className="mb-2 hidden text-[11px] text-gray-500 md:block">Envoi immédiat ou programmé</p>
               <button onClick={() => setShowPlanif(true)}
                 className="w-full rounded-lg bg-[#F4511E] py-1.5 text-[11px] font-semibold text-white hover:bg-[#d9400f]">
-                Programmer envoi
+                Programmer
               </button>
             </div>
 
             {/* RGPD */}
-            <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-base">✅</span>
-                <p className="text-[12px] font-semibold text-[#F4511E]">Conformité RGPD</p>
+            <div className="rounded-xl border border-gray-100 bg-white p-3 md:p-4 shadow-sm">
+              <div className="mb-2 flex items-center gap-1.5 md:gap-2">
+                <span className="text-sm md:text-base">🛡️</span>
+                <p className="text-[11px] md:text-[12px] font-semibold text-[#3B2F8F]">RGPD</p>
               </div>
-              <div className="space-y-1">
-                <p className="cursor-pointer text-[11px] text-[#F4511E] hover:underline">Lien désinscription</p>
-                <p className="cursor-pointer text-[11px] text-[#F4511E] hover:underline">Adresse postale</p>
+              <div className="space-y-2">
+                <label className="flex cursor-pointer items-center gap-1.5">
+                  <input type="checkbox" checked readOnly className="accent-green-500 h-3.5 w-3.5 shrink-0" />
+                  <span className="text-[10px] md:text-[11px] font-semibold text-green-600">Conformité</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-1.5"
+                  onClick={() => setRgpd(p => ({ ...p, lienDesinscription: !p.lienDesinscription }))}>
+                  <input type="checkbox" checked={rgpd.lienDesinscription} readOnly className="accent-[#1a73e8] h-3.5 w-3.5 shrink-0" />
+                  <span className={`text-[10px] md:text-[11px] font-medium ${rgpd.lienDesinscription ? 'text-[#1a73e8]' : 'text-gray-400'}`}>
+                    Désinscription
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-1.5"
+                  onClick={() => setRgpd(p => ({ ...p, adressePostale: !p.adressePostale }))}>
+                  <input type="checkbox" checked={rgpd.adressePostale} readOnly className="accent-[#1a73e8] h-3.5 w-3.5 shrink-0" />
+                  <span className={`text-[10px] md:text-[11px] font-medium ${rgpd.adressePostale ? 'text-[#1a73e8]' : 'text-gray-400'}`}>
+                    Adresse postale
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-1.5"
+                  onClick={() => setRgpd(p => ({ ...p, optInUniquement: !p.optInUniquement }))}>
+                  <input type="checkbox" checked={rgpd.optInUniquement} readOnly className="accent-[#3B2F8F] h-3.5 w-3.5 shrink-0" />
+                  <span className={`text-[10px] md:text-[11px] font-medium ${rgpd.optInUniquement ? 'text-[#3B2F8F]' : 'text-gray-400'}`}>
+                    Opt-in seul.
+                  </span>
+                </label>
               </div>
             </div>
           </div>
         </div>
-        </div> {/* overflow-x-auto */}
       </div>
 
       <DashboardFooter />
@@ -913,7 +1021,7 @@ export default function EditeurEmailPage() {
       <ContactGestionModal
         open={showContacts}
         onClose={() => setShowContacts(false)}
-        onApply={groups => setSelectedGroups(groups)}
+        onApply={(groups, segIds) => { setSelectedGroups(groups); setSelectedSegmentIds(segIds) }}
       />
       <PlanificationModal
         open={showPlanif}
@@ -931,6 +1039,7 @@ export default function EditeurEmailPage() {
         expediteur={expediteur}
         blocs={blocks}
         groupesSelectionnes={selectedGroups}
+        segmentIds={selectedSegmentIds}
       />
       <PreviewEmailModal
         open={showPreview}
@@ -940,6 +1049,15 @@ export default function EditeurEmailPage() {
         blocks={blocks}
         isMobile={viewMode === 'mobile'}
       />
+      {showAbTest && (
+        <AbTestModal
+          onClose={() => setShowAbTest(false)}
+          onSuccess={() => setShowAbTest(false)}
+          prefillExpediteur={expediteur}
+          prefillSubjectA={sujet}
+          prefillBlocsJson={blocks}
+        />
+      )}
     </div>
   )
 }

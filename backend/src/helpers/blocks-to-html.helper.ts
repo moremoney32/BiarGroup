@@ -14,6 +14,7 @@ interface ContactVars {
   nom?: string
   email?: string
   entreprise?: string
+  [key: string]: string | undefined
 }
 
 const SOCIAL = [
@@ -29,6 +30,10 @@ function applyVars(text: string, vars: ContactVars): string {
     .replace(/\{\{nom\}\}/g, vars.nom ?? '')
     .replace(/\{\{email\}\}/g, vars.email ?? '')
     .replace(/\{\{entreprise\}\}/g, vars.entreprise ?? '')
+    // Remplace tout {{autreVariable}} par la valeur du custom_field correspondant
+    .replace(/\{\{(\w+)\}\}/g, (match, key: string) =>
+      vars[key] !== undefined ? (vars[key] ?? '') : match
+    )
 }
 
 function renderBlock(block: Block, vars: ContactVars, apiBase: string, messageId?: number): string {

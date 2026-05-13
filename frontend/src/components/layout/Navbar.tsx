@@ -61,7 +61,7 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
 
         {/* Compteur crédits email — visible dans toute la section email */}
         {isEmailSection && (
-          <div className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold mr-1 ${
+          <div className={`flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold mr-1 shrink-0 ${
             credits === null
               ? 'border-gray-100 bg-gray-50 text-gray-400'
               : credits === 0
@@ -71,12 +71,17 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
               : 'border-[#F4511E]/25 bg-[#FFF7F5] text-[#F4511E]'
           }`}>
             <Zap size={11} />
-            {credits === null
-              ? 'Crédits...'
-              : credits === 0
-              ? '0 crédit — recharger'
-              : `${credits} crédit${credits !== 1 ? 's' : ''}`
-            }
+            <span className="hidden sm:inline">
+              {credits === null
+                ? 'Crédits...'
+                : credits === 0
+                ? '0 crédit — recharger'
+                : `${credits} crédit${credits !== 1 ? 's' : ''}`
+              }
+            </span>
+            <span className="sm:hidden">
+              {credits === null ? '...' : credits}
+            </span>
           </div>
         )}
 
@@ -84,7 +89,7 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
           <Sun size={15} />
         </button>
 
-        <button className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium text-gray-500 hover:bg-gray-100">
+        <button className="hidden sm:flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium text-gray-500 hover:bg-gray-100">
           🇫🇷 <span>FR</span>
         </button>
 
