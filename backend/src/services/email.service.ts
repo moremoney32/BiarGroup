@@ -1377,21 +1377,50 @@ export const emailService = {
     let spfStatus: 'ok' | 'fail' = 'fail'
     try {
       const txtRecords = await dns.resolveTxt(domain)
-      const flat = txtRecords.flat().join(' ')
-      const spfLine = flat.split(' ').find((_, i, arr) => arr[i] === 'v=spf1' || flat.includes('v=spf1'))
       const fullSpf = txtRecords.flat().find(r => r.includes('v=spf1')) ?? ''
 
       if (provider === 'brevo'    && fullSpf.includes('spf.brevo.com'))  spfStatus = 'ok'
       if (provider === 'sendgrid' && fullSpf.includes('sendgrid.net'))    spfStatus = 'ok'
       if (provider === 'custom'   && fullSpf.includes('v=spf1'))          spfStatus = 'ok'
+
+      // Brevo nouveau système : si le Code Brevo TXT est présent, accepter aussi
+      if (provider === 'brevo' && spfStatus === 'fail') {
+        const hasBrevoCode = txtRecords.flat().some(r => r.startsWith('brevo-code:'))
+        if (hasBrevoCode) spfStatus = 'ok'
+      }
     } catch { spfStatus = 'fail' }
 
     // ── DKIM ─────────────────────────────────────────────────────────────────
+    // Brevo utilise des CNAME (brevo1._domainkey, brevo2._domainkey) depuis 2024
+    // SendGrid utilise un TXT sur s1._domainkey
     let dkimStatus: 'ok' | 'fail' = 'fail'
     try {
-      const selector = provider === 'sendgrid' ? 's1' : 'brevo'
-      await dns.resolveTxt(`${selector}._domainkey.${domain}`)
-      dkimStatus = 'ok'
+      if (provider === 'brevo') {
+        // Essaie CNAME brevo1 ou brevo2 (nouveau système Brevo)
+        let found = false
+        for (const sel of ['brevo1', 'brevo2', 'brevo']) {
+          try {
+            const r = await dns.resolveCname(`${sel}._domainkey.${domain}`)
+            if (r.length) { found = true; break }
+          } catch { /* continue */ }
+          try {
+            const r = await dns.resolveTxt(`${sel}._domainkey.${domain}`)
+            if (r.length) { found = true; break }
+          } catch { /* continue */ }
+        }
+        if (found) dkimStatus = 'ok'
+      } else if (provider === 'sendgrid') {
+        await dns.resolveCname(`s1._domainkey.${domain}`)
+        dkimStatus = 'ok'
+      } else {
+        // custom — cherche n'importe quel selector commun
+        for (const sel of ['default', 'mail', 'smtp', 'dkim', 'k1']) {
+          try {
+            await dns.resolveTxt(`${sel}._domainkey.${domain}`)
+            dkimStatus = 'ok'; break
+          } catch { /* continue */ }
+        }
+      }
     } catch { dkimStatus = 'fail' }
 
     // ── DMARC ────────────────────────────────────────────────────────────────

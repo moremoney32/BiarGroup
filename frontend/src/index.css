@@ -18,6 +18,13 @@
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  /* Les inputs héritaient du texte blanc (foreground) du body — on force le gris foncé */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    color: #1F2937;
+  }
 }
 
 /* Scrollbar custom */

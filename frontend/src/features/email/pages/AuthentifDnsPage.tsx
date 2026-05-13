@@ -32,10 +32,10 @@ function getDnsRecords(domain: string, provider: Provider): DnsRecord[] {
       },
       {
         type: 'DKIM',
-        host: 'brevo._domainkey',
-        recordType: 'TXT',
+        host: 'brevo1._domainkey',
+        recordType: 'CNAME',
         value: null,
-        note: 'La valeur DKIM est générée par Brevo. Récupérez-la dans votre tableau de bord Brevo.',
+        note: 'Brevo génère 2 enregistrements CNAME (brevo1 et brevo2). Récupérez-les dans votre tableau de bord Brevo → Expéditeurs → Domaines → Voir la configuration.',
         dashboardUrl: 'https://app.brevo.com/senders/domain',
         dashboardLabel: 'Ouvrir dashboard Brevo →',
       },
@@ -461,11 +461,16 @@ export default function AuthentifDnsPage() {
                       </span>
                       <button
                         onClick={() => handleVerify(domain.id)}
-                        disabled={verifying === domain.id}
-                        className="flex items-center gap-1.5 rounded-lg bg-[#F4511E] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#d9400f] disabled:opacity-60 transition-colors"
+                        disabled={verifying === domain.id || score === 3}
+                        title={score === 3 ? 'Domaine déjà vérifié 3/3' : 'Vérifier les enregistrements DNS'}
+                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                          score === 3
+                            ? 'bg-green-100 text-green-600 cursor-not-allowed'
+                            : 'bg-[#F4511E] text-white hover:bg-[#d9400f] disabled:opacity-60'
+                        }`}
                       >
                         <RefreshCw size={11} className={verifying === domain.id ? 'animate-spin' : ''} />
-                        {verifying === domain.id ? 'Vérification…' : 'Vérifier'}
+                        {verifying === domain.id ? 'Vérification…' : score === 3 ? 'Vérifié ✓' : 'Vérifier'}
                       </button>
                       <button
                         onClick={() => handleDelete(domain.id)}

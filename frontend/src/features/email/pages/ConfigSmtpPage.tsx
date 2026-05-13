@@ -523,7 +523,7 @@ export default function ConfigSmtpPage() {
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder={`ex: ${currentProvider.label} Principal`}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] focus:border-[#F4511E] focus:outline-none"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-700 focus:border-[#F4511E] focus:outline-none"
                 />
               </div>
 
@@ -536,7 +536,7 @@ export default function ConfigSmtpPage() {
                       value={form.host}
                       onChange={e => setForm(f => ({ ...f, host: e.target.value }))}
                       placeholder="smtp.example.com"
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] focus:border-[#F4511E] focus:outline-none"
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-700 focus:border-[#F4511E] focus:outline-none"
                     />
                   </div>
                   <div>
@@ -545,7 +545,7 @@ export default function ConfigSmtpPage() {
                       type="number"
                       value={form.port}
                       onChange={e => setForm(f => ({ ...f, port: Number(e.target.value) }))}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] focus:border-[#F4511E] focus:outline-none"
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-700 focus:border-[#F4511E] focus:outline-none"
                     />
                   </div>
                 </div>
@@ -607,7 +607,7 @@ export default function ConfigSmtpPage() {
                     value={form.fromName}
                     onChange={e => setForm(f => ({ ...f, fromName: e.target.value }))}
                     placeholder="Mon Entreprise"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] focus:border-[#F4511E] focus:outline-none"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-700 focus:border-[#F4511E] focus:outline-none"
                   />
                 </div>
                 <div>
@@ -617,7 +617,7 @@ export default function ConfigSmtpPage() {
                     value={form.fromEmail}
                     onChange={e => setForm(f => ({ ...f, fromEmail: e.target.value }))}
                     placeholder="noreply@domain.com"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] focus:border-[#F4511E] focus:outline-none"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-700 focus:border-[#F4511E] focus:outline-none"
                   />
                 </div>
               </div>
@@ -630,7 +630,7 @@ export default function ConfigSmtpPage() {
                   value={form.replyTo ?? ''}
                   onChange={e => setForm(f => ({ ...f, replyTo: e.target.value }))}
                   placeholder="support@domain.com"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] focus:border-[#F4511E] focus:outline-none"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] text-gray-700 focus:border-[#F4511E] focus:outline-none"
                 />
               </div>
             </div>
