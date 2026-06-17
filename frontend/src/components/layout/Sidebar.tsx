@@ -1,14 +1,32 @@
 import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Phone, MessageSquare, Mail,
   MessageCircle, ChevronDown, ChevronRight,
   Edit, FileText, Zap, BarChart2, Filter,
   Server, Shield, TrendingUp, User, LogOut, Globe, X,
+  Send, Users, List, Calendar, Tag, Star, Settings, Link, Code,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useAppSelector } from '../../store/index'
 import { selectCurrentUser } from '../../store/slices/authSlice'
+
+const smsSubItems = [
+  { to: '/app/sms/unique',      icon: Send,        label: 'SMS Unique' },
+  { to: '/app/sms/masse',       icon: MessageSquare, label: 'SMS en Masse' },
+  { to: '/app/sms/rapports',    icon: BarChart2,   label: 'Rapports Campagnes' },
+  { to: '/app/sms/modeles',     icon: FileText,    label: 'Modèles SMS' },
+  { to: '/app/sms/contacts',    icon: Users,       label: 'Gestion Contacts' },
+  { to: '/app/sms/listes',      icon: List,        label: 'Gestion des Listes' },
+  { to: '/app/sms/programmes',  icon: Calendar,    label: 'Messages Programmés' },
+  { to: '/app/sms/analytics',   icon: BarChart2,   label: 'Analytics SMS' },
+  { to: '/app/sms/identifiants', icon: Tag,        label: 'Identifiants Expéditeur' },
+  { to: '/app/sms/a2p',              icon: Zap,      label: 'SMS A2P' },
+  { to: '/app/sms/rcs',              icon: Star,     label: 'Messages RCS' },
+  { to: '/app/sms/configuration-rcs', icon: Settings, label: 'Configuration RCS' },
+  { to: '/app/sms/reducteur-url',    icon: Link,     label: 'Réducteur d\'URL' },
+  { to: '/app/sms/documentation-api', icon: Code,    label: 'Documentation API' },
+]
 
 const emailSubItems = [
   { to: '/app/email/campagnes', icon: Mail, label: 'Campagnes Email' },
@@ -25,7 +43,6 @@ const emailSubItems = [
 const topSections = [
   { icon: LayoutDashboard, label: 'Tableau de Bord' },
   { icon: Phone, label: 'Centre d\'Appels' },
-  { icon: MessageSquare, label: 'Marketing SMS' },
 ]
 
 const bottomSections = [
@@ -47,9 +64,24 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open = false, onClose }: SidebarProps) {
-  const [emailOpen, setEmailOpen] = useState(true)
+  const location = useLocation()
+  const onSmsRoute   = location.pathname.startsWith('/app/sms')
+  const onEmailRoute = location.pathname.startsWith('/app/email')
+
+  const [smsOpen, setSmsOpen]     = useState(onSmsRoute)
+  const [emailOpen, setEmailOpen] = useState(onEmailRoute || (!onSmsRoute))
   const { logout } = useAuth()
   const user = useAppSelector(selectCurrentUser)
+
+  // Accordéon : une seule section ouverte à la fois
+  const toggleSms = () => {
+    setSmsOpen(o => !o)
+    if (!smsOpen) setEmailOpen(false)
+  }
+  const toggleEmail = () => {
+    setEmailOpen(o => !o)
+    if (!emailOpen) setSmsOpen(false)
+  }
 
   return (
     <aside className={`fixed left-0 top-0 z-40 flex h-full w-[168px] flex-col border-r border-gray-200 bg-white transition-transform duration-300 ease-in-out md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -86,10 +118,48 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
           </div>
         ))}
 
+        {/* Marketing SMS — expandable */}
+        <div className="mt-1">
+          <button
+            onClick={toggleSms}
+            className="flex w-full items-center justify-between px-3 py-2 text-[12px] font-semibold text-[#F4511E] transition-colors hover:bg-orange-50"
+          >
+            <div className="flex items-center gap-2">
+              <MessageSquare size={14} className="shrink-0" />
+              <span>Marketing SMS</span>
+            </div>
+            <ChevronDown
+              size={12}
+              className={`shrink-0 transition-transform duration-200 ${smsOpen ? 'rotate-0' : '-rotate-90'}`}
+            />
+          </button>
+
+          {smsOpen && (
+            <div className="mt-0.5 space-y-px pb-1">
+              {smsSubItems.map(({ to, icon: Icon, label }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  className={({ isActive }) =>
+                    `mx-2 flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] leading-tight transition-colors ${
+                      isActive
+                        ? 'bg-[#F4511E] font-semibold text-white'
+                        : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
+                    }`
+                  }
+                >
+                  <Icon size={12} className="shrink-0" />
+                  <span>{label}</span>
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Marketing Email — expandable */}
         <div className="mt-1">
           <button
-            onClick={() => setEmailOpen(o => !o)}
+            onClick={toggleEmail}
             className="flex w-full items-center justify-between px-3 py-2 text-[12px] font-semibold text-[#F4511E] transition-colors hover:bg-orange-50"
           >
             <div className="flex items-center gap-2">
@@ -123,6 +193,21 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
             </div>
           )}
         </div>
+
+        {/* Sections supplémentaires SMS */}
+        {[
+          { icon: BarChart2,    label: 'Analytics SMS'  },
+          { icon: Settings,     label: 'Outils SMS'     },
+          { icon: Code,         label: 'SMS Technique'  },
+        ].map(({ icon: Icon, label }) => (
+          <div key={label} className="flex cursor-default select-none items-center justify-between px-3 py-2">
+            <div className="flex items-center gap-2 text-[12px] text-gray-400">
+              <Icon size={14} className="shrink-0" />
+              <span className="truncate">{label}</span>
+            </div>
+            <ChevronRight size={12} className="shrink-0 text-gray-300" />
+          </div>
+        ))}
 
         {/* Bottom disabled sections */}
         {bottomSections.map(({ icon: Icon, label }) => (

@@ -18,6 +18,21 @@ const VerifyEmailPage = lazy(() => import('./features/auth/pages/VerifyEmailPage
 const DashboardPage = lazy(() => import('./features/dashboard/pages/DashboardPage'))
 const CallCenterPage = lazy(() => import('./features/call-center/pages/CallCenterPage'))
 const SmsPage = lazy(() => import('./features/sms/pages/SmsPage'))
+const SmsDashboardPage = lazy(() => import('./features/sms/pages/SmsDashboardPage'))
+const SmsUniquePage = lazy(() => import('./features/sms/pages/SmsUniquePage'))
+const SmsEnMassePage = lazy(() => import('./features/sms/pages/SmsEnMassePage'))
+const SmsRapportsCampagnesPage = lazy(() => import('./features/sms/pages/SmsRapportsCampagnesPage'))
+const SmsModelesPage = lazy(() => import('./features/sms/pages/SmsModelesPage'))
+const SmsGestionContactsPage = lazy(() => import('./features/sms/pages/SmsGestionContactsPage'))
+const SmsGestionListesPage = lazy(() => import('./features/sms/pages/SmsGestionListesPage'))
+const SmsMessagesProgrammesPage = lazy(() => import('./features/sms/pages/SmsMessagesProgrammesPage'))
+const SmsAnalyticsPage = lazy(() => import('./features/sms/pages/SmsAnalyticsPage'))
+const SmsIdentifiantsPage = lazy(() => import('./features/sms/pages/SmsIdentifiantsPage'))
+const SmsA2pPage = lazy(() => import('./features/sms/pages/SmsA2pPage'))
+const SmsMessagesRcsPage = lazy(() => import('./features/sms/pages/SmsMessagesRcsPage'))
+const SmsConfigurationRcsPage = lazy(() => import('./features/sms/pages/SmsConfigurationRcsPage'))
+const SmsReducteurUrlPage = lazy(() => import('./features/sms/pages/SmsReducteurUrlPage'))
+const SmsDocumentationApiPage = lazy(() => import('./features/sms/pages/SmsDocumentationApiPage'))
 const EmailPage = lazy(() => import('./features/email/pages/EmailPage'))
 const CampagnesEmailPage = lazy(() => import('./features/email/pages/CampagnesEmailPage'))
 const EditeurEmailPage = lazy(() => import('./features/email/pages/EditeurEmailPage'))
@@ -94,7 +109,24 @@ export default function App() {
             <Route index element={<Navigate to="/app/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="call-center/*" element={<CallCenterPage />} />
-            <Route path="sms/*" element={<SmsPage />} />
+            <Route path="sms" element={<SmsPage />}>
+              <Route index element={<Navigate to="/app/sms/unique" replace />} />
+              <Route path="dashboard"    element={<SmsDashboardPage />} />
+              <Route path="unique"       element={<SmsUniquePage />} />
+              <Route path="masse"        element={<SmsEnMassePage />} />
+              <Route path="rapports"     element={<SmsRapportsCampagnesPage />} />
+              <Route path="modeles"      element={<SmsModelesPage />} />
+              <Route path="contacts"     element={<SmsGestionContactsPage />} />
+              <Route path="listes"       element={<SmsGestionListesPage />} />
+              <Route path="programmes"   element={<SmsMessagesProgrammesPage />} />
+              <Route path="analytics"    element={<SmsAnalyticsPage />} />
+              <Route path="identifiants" element={<SmsIdentifiantsPage />} />
+              <Route path="a2p"          element={<SmsA2pPage />} />
+              <Route path="rcs"               element={<SmsMessagesRcsPage />} />
+              <Route path="configuration-rcs" element={<SmsConfigurationRcsPage />} />
+              <Route path="reducteur-url"     element={<SmsReducteurUrlPage />} />
+              <Route path="documentation-api" element={<SmsDocumentationApiPage />} />
+            </Route>
             <Route path="email" element={<EmailPage />}>
               <Route index element={<Navigate to="/app/email/campagnes" replace />} />
               <Route path="campagnes" element={<CampagnesEmailPage />} />

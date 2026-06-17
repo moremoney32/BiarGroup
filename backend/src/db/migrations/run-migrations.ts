@@ -43,10 +43,10 @@ async function runMigration(filename: string, sql: string): Promise<void> {
       .filter((s) => s.length > 0)
 
     for (const stmt of statements) {
-      await conn.execute(stmt)
+      await conn.query(stmt)
     }
 
-    await conn.execute(
+    await conn.query(
       'INSERT INTO schema_migrations (filename) VALUES (?)',
       [filename]
     )

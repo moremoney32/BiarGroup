@@ -3,6 +3,8 @@ import http from 'http'
 import { Server as SocketServer } from 'socket.io'
 import app from './app'
 import { connectDB } from './db/config'
+import './queue/email.worker'
+import './queue/sms.worker'
 
 const PORT = process.env.PORT || 5000
 

@@ -132,7 +132,7 @@ relanceQueue.on('error', (err) => {
   console.warn('[RELANCE] Redis non disponible :', err.message)
 })
 relanceQueue.on('completed', () => console.log('[RELANCE] ✅ Vérification terminée'))
-relanceQueue.on('failed', (_job, err) => console.error('[RELANCE] ❌', err.message))
+relanceQueue.on('failed', (_job, err) => console.error('[RELANCE] ❌', err?.message ?? err))
 
 // Job récurrent — évalue les tests A/B arrivés à échéance toutes les heures
 const abTestQueue = new Bull('ab-test-evaluator', {
@@ -160,7 +160,7 @@ scheduleAbTestCheck().catch(console.error)
 
 abTestQueue.on('error', (err) => console.warn('[AB TEST] Redis non disponible :', err.message))
 abTestQueue.on('completed', () => console.log('[AB TEST] ✅ Évaluation terminée'))
-abTestQueue.on('failed', (_job, err) => console.error('[AB TEST] ❌', err.message))
+abTestQueue.on('failed', (_job, err) => console.error('[AB TEST] ❌', err?.message ?? err))
 
 // ── Flow runner — toutes les 15 minutes ─────────────────────────────────────
 
@@ -188,6 +188,6 @@ scheduleFlowRunner().catch(console.error)
 
 flowQueue.on('error',     (err)       => console.warn('[FLOW] Redis non disponible :', err.message))
 flowQueue.on('completed', ()          => console.log('[FLOW] ✅ Exécution terminée'))
-flowQueue.on('failed',    (_job, err) => console.error('[FLOW] ❌', err.message))
+flowQueue.on('failed',    (_job, err) => console.error('[FLOW] ❌', err?.message ?? err))
 
 export { emailQueue }
