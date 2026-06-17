@@ -16,7 +16,7 @@ export function useLocalStorage<T>(key: string, defaultValue: T) {
         const next = typeof newVal === 'function' ? (newVal as (p: T) => T)(prev) : newVal
         try {
           localStorage.setItem(key, JSON.stringify(next))
-        } catch {}
+        } catch { /* localStorage peut être bloqué */ }
         return next
       })
     },

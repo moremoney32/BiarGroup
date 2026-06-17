@@ -33,7 +33,7 @@ export default function SmsMessagesRcsPage() {
             { label: 'Taux de lecture',    value: '89%',   color: '#22C55E', bg: '#F0FDF4' },
             { label: "Taux d'interaction", value: '34%',   color: '#8B5CF6', bg: '#F5F3FF' },
             { label: 'Clics boutons',      value: '1 234', color: '#F97316', bg: '#FFF7ED' },
-          ].map(({ label, value, color, bg }) => (
+          ].map(({ label, value, color }) => (
             <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <p className="text-[20px] font-bold" style={{ color }}>{value}</p>
               <p className="mt-1 text-[11px] text-gray-500">{label}</p>

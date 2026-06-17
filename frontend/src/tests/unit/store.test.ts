@@ -1,6 +1,6 @@
 import { store } from '../../store/index'
 import { setCredentials, logout, selectIsAuthenticated } from '../../store/slices/authSlice'
-import { addToast, removeToast, selectToasts } from '../../store/slices/notificationSlice'
+import { addToast, selectToasts } from '../../store/slices/notificationSlice'
 import { toggleSidebar, selectSidebarCollapsed } from '../../store/slices/uiSlice'
 
 describe('authSlice', () => {

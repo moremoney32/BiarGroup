@@ -1,6 +1,6 @@
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { axiosBaseQuery } from '../../services/api'
-import type { WaCampaign, WaTemplate, WaMessage } from '../../types/whatsapp.types'
+import type { WaCampaign, WaTemplate } from '../../types/whatsapp.types'
 import type { PaginatedResponse, PaginationQuery } from '../../types/api.types'
 
 export const whatsappApi = createApi({

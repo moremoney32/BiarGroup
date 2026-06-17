@@ -28,8 +28,9 @@ export const authController = {
       const { user, tokens } = await authService.register(req.body, req.ip)
       setRefreshCookie(res, tokens.refreshToken)
       sendSuccess(res, { user, accessToken: tokens.accessToken }, 'Compte créé avec succès', 201)
-    } catch (err: any) {
-      sendError(res, err.statusCode ?? 500, err.code ?? 'SERVER_ERROR', err.message)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; code?: string; message?: string }
+      sendError(res, e.statusCode ?? 500, e.code ?? 'SERVER_ERROR', e.message ?? 'Erreur serveur')
     }
   },
 
@@ -39,8 +40,9 @@ export const authController = {
       const { user, tokens } = await authService.login(email, password, req.ip)
       setRefreshCookie(res, tokens.refreshToken)
       sendSuccess(res, { user, accessToken: tokens.accessToken }, 'Connexion réussie')
-    } catch (err: any) {
-      sendError(res, err.statusCode ?? 500, err.code ?? 'SERVER_ERROR', err.message)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; code?: string; message?: string }
+      sendError(res, e.statusCode ?? 500, e.code ?? 'SERVER_ERROR', e.message ?? 'Erreur serveur')
     }
   },
 
@@ -50,8 +52,9 @@ export const authController = {
       await authService.logout(req.user!.id, refreshToken)
       res.clearCookie('refreshToken', { path: '/api/v1/auth' })
       sendSuccess(res, null, 'Déconnexion réussie')
-    } catch (err: any) {
-      sendError(res, err.statusCode ?? 500, err.code ?? 'SERVER_ERROR', err.message)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; code?: string; message?: string }
+      sendError(res, e.statusCode ?? 500, e.code ?? 'SERVER_ERROR', e.message ?? 'Erreur serveur')
     }
   },
 
@@ -65,8 +68,9 @@ export const authController = {
       const tokens = await authService.refreshToken(token)
       setRefreshCookie(res, tokens.refreshToken)
       sendSuccess(res, { accessToken: tokens.accessToken }, 'Token renouvelé')
-    } catch (err: any) {
-      sendError(res, err.statusCode ?? 500, err.code ?? 'SERVER_ERROR', err.message)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; code?: string; message?: string }
+      sendError(res, e.statusCode ?? 500, e.code ?? 'SERVER_ERROR', e.message ?? 'Erreur serveur')
     }
   },
 
@@ -75,8 +79,9 @@ export const authController = {
       await authService.forgotPassword(req.body.email, req.ip)
       // Réponse identique qu'un email existe ou non — sécurité
       sendSuccess(res, null, 'Si cet email existe, un lien de réinitialisation a été envoyé')
-    } catch (err: any) {
-      sendError(res, err.statusCode ?? 500, err.code ?? 'SERVER_ERROR', err.message)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; code?: string; message?: string }
+      sendError(res, e.statusCode ?? 500, e.code ?? 'SERVER_ERROR', e.message ?? 'Erreur serveur')
     }
   },
 
@@ -85,8 +90,9 @@ export const authController = {
       const { token, password } = req.body
       await authService.resetPassword(token, password, req.ip)
       sendSuccess(res, null, 'Mot de passe réinitialisé avec succès')
-    } catch (err: any) {
-      sendError(res, err.statusCode ?? 500, err.code ?? 'SERVER_ERROR', err.message)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; code?: string; message?: string }
+      sendError(res, e.statusCode ?? 500, e.code ?? 'SERVER_ERROR', e.message ?? 'Erreur serveur')
     }
   },
 
@@ -94,8 +100,9 @@ export const authController = {
     try {
       await authService.resendOtp(req.body.email, req.ip)
       sendSuccess(res, null, 'Nouveau code envoyé par email')
-    } catch (err: any) {
-      sendError(res, err.statusCode ?? 500, err.code ?? 'SERVER_ERROR', err.message)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; code?: string; message?: string }
+      sendError(res, e.statusCode ?? 500, e.code ?? 'SERVER_ERROR', e.message ?? 'Erreur serveur')
     }
   },
 
@@ -103,8 +110,9 @@ export const authController = {
     try {
       await authService.verifyEmail(req.params.token, req.ip)
       sendSuccess(res, null, 'Email vérifié avec succès')
-    } catch (err: any) {
-      sendError(res, err.statusCode ?? 500, err.code ?? 'SERVER_ERROR', err.message)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; code?: string; message?: string }
+      sendError(res, e.statusCode ?? 500, e.code ?? 'SERVER_ERROR', e.message ?? 'Erreur serveur')
     }
   },
 
@@ -114,8 +122,9 @@ export const authController = {
       const { user, tokens } = await authService.verifyOtp(email, code, req.ip)
       setRefreshCookie(res, tokens.refreshToken)
       sendSuccess(res, { user, accessToken: tokens.accessToken }, 'Email vérifié avec succès')
-    } catch (err: any) {
-      sendError(res, err.statusCode ?? 500, err.code ?? 'SERVER_ERROR', err.message)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; code?: string; message?: string }
+      sendError(res, e.statusCode ?? 500, e.code ?? 'SERVER_ERROR', e.message ?? 'Erreur serveur')
     }
   },
 
@@ -123,8 +132,9 @@ export const authController = {
     try {
       const user = await authService.getMe(req.user!.id)
       sendSuccess(res, { user })
-    } catch (err: any) {
-      sendError(res, err.statusCode ?? 500, err.code ?? 'SERVER_ERROR', err.message)
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; code?: string; message?: string }
+      sendError(res, e.statusCode ?? 500, e.code ?? 'SERVER_ERROR', e.message ?? 'Erreur serveur')
     }
   },
 }
