@@ -459,7 +459,6 @@ function FlowEditorContent({ flow, onClose, onSaved, templates }: Props) {
     type Step = { id: string; type: string; data: FlowNodeData; totalDelay: number; branch?: string }
     const steps: Step[] = []
     const visited = new Set<string>()
-    let totalDelay = 0
 
     const trigger = nodes.find(n => n.type === 'triggerNode')
     if (!trigger) return steps

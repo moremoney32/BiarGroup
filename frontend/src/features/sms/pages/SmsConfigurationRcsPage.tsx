@@ -250,7 +250,7 @@ export default function SmsConfigurationRcsPage() {
               { icon: '📱', title: 'Best Practices',        sub: 'Bonnes pratiques RCS',     color: '#16A34A', bg: '#F0FDF4' },
               { icon: '🎨', title: 'Design Guidelines',     sub: 'Lignes directrices de design', color: '#7C3AED', bg: '#F5F3FF' },
               { icon: '🛡', title: 'Compliance & Security', sub: 'Conformité et sécurité',   color: '#EA580C', bg: '#FFF7ED' },
-            ].map(({ icon, title, sub, color, bg }) => (
+            ].map(({ icon, title, sub, bg }) => (
               <button key={title} className="flex items-center gap-3 rounded-xl border border-gray-100 p-4 text-left hover:shadow-sm transition-shadow">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[16px]" style={{ backgroundColor: bg }}>
                   {icon}

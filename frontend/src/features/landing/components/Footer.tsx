@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion'
 import { MapPin, Phone, Mail } from 'lucide-react'
 
 const solutions = ['Centre d\'Appels Cloud', 'SMS Marketing', 'WhatsApp Business', 'Email Marketing']

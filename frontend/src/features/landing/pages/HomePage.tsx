@@ -1,5 +1,3 @@
-import { motion, useInView } from 'framer-motion'
-import { useRef } from 'react'
 import Navbar from '../components/Navbar'
 import Hero from '../components/Hero'
 import Stats from '../components/Stats'

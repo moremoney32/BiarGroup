@@ -74,8 +74,6 @@ function NewCampaignModal({ senderIds, lists, templates, onClose, onCreated }: N
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState('')
   const [step, setStep]           = useState<'form' | 'confirm'>('form')
-  const [sendNow, setSendNow]     = useState(false)
-
   const sms = useMemo(() => calcSms(message), [message])
 
   const totalRecipients = lists

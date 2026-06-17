@@ -1,6 +1,6 @@
 import { motion, useInView } from 'framer-motion'
 import { useRef } from 'react'
-import { TrendingUp, Clock, Star, Zap, Globe, HeartHandshake } from 'lucide-react'
+import { TrendingUp, Clock, Star, Zap, Globe } from 'lucide-react'
 
 const metrics = [
   { icon: TrendingUp, value: '98%',  color: '#F97316', label: 'Taux d\'engagement client',  desc: 'Augmentation moyenne de l\'engagement client' },
