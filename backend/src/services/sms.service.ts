@@ -104,6 +104,7 @@ async function sendSenderIdNotification(params: {
 
 // Nombre de segments SMS (GSM-7 = 160 chars, Unicode = 70 chars)
 function countSegments(text: string): number {
+  // eslint-disable-next-line no-control-regex
   const isGsm = /^[\x00-\x7F@£$¥èéùìòçØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜàäöñü§¿\n\r]*$/.test(text)
   const limit = isGsm ? 160 : 70
   const segLimit = isGsm ? 153 : 67
@@ -326,6 +327,7 @@ export const smsService = {
 
     for (const listId of listIds) {
       let offset = 0
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         const [rows] = await pool.execute<RowDataPacket[]>(
           `SELECT phone FROM sms_list_contacts

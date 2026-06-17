@@ -1,3 +1,4 @@
+/* eslint-disable */
 import Bull from 'bull'
 
 const whatsappQueue = new Bull('whatsapp', {

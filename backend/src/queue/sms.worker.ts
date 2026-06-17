@@ -1,7 +1,6 @@
 import Bull from 'bull'
 import { pool } from '../db/config'
-import { africastalkingService, mapAtStatusToMessageStatus } from '../services/africastalking.service'
-import type { ResultSetHeader, RowDataPacket } from 'mysql2'
+import { africastalkingService } from '../services/africastalking.service'
 
 const redisConfig = {
   host:     process.env.REDIS_HOST     ?? 'localhost',
@@ -32,7 +31,7 @@ export const smsQueue = new Bull<SmsJob>('sms-send', {
 
 // 5 jobs en parallèle — bon équilibre débit / stabilité AT API
 smsQueue.process(5, async (job) => {
-  const { messageId, phone, senderId, body, tenantId, campaignId } = job.data
+  const { messageId, phone, senderId, body, campaignId } = job.data
 
   try {
     const recipients = await africastalkingService.sendSms({

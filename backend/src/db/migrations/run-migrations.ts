@@ -18,7 +18,7 @@ async function ensureMigrationsTable(): Promise<void> {
 }
 
 async function getAppliedMigrations(): Promise<string[]> {
-  const [rows] = await pool.execute<any[]>(
+  const [rows] = await pool.execute<{ filename: string }[]>(
     'SELECT filename FROM schema_migrations ORDER BY applied_at ASC'
   )
   return rows.map((r) => r.filename)

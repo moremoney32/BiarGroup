@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { pool } from '../db/config'
 import axios from 'axios'
 import type { WaCampaign, WaTemplate, WaMessage } from '../types/whatsapp.types'

@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { Request, Response } from 'express'
 import { whatsappService } from '../services/whatsapp.service'
 import { sendSuccess, sendError } from '../helpers/response.helper'

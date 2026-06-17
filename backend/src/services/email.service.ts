@@ -151,7 +151,7 @@ export const emailService = {
       if (!scheduledAt) {
         for (const { id: messageId, contact } of messageIds) {
           const html = blocksToHtml(
-            informationUser as any[],
+            informationUser as Record<string, unknown>[],
             expediteur,
             sujet,
             buildContactVars(contact),
@@ -431,7 +431,7 @@ export const emailService = {
           [relance.campaign_id]
         )
 
-        const blocs = JSON.parse(relance.blocs_json) as any[]
+        const blocs = JSON.parse(relance.blocs_json) as Record<string, unknown>[]
         let sent = 0
 
         for (const person of nonOpeners) {
@@ -581,7 +581,7 @@ export const emailService = {
       // 10 — Enqueue (hors transaction)
       for (const { messageId, contact, campaignId, subject } of toEnqueue) {
         const html = blocksToHtml(
-          blocsJson as any[],
+          blocsJson as Record<string, unknown>[],
           expediteur,
           subject,
           buildContactVars(contact),
@@ -712,7 +712,7 @@ export const emailService = {
           const availableCredits = Number((cRows as RowDataPacket[])[0]?.email_credits ?? 0)
 
           if (availableCredits >= remainder.length) {
-            const blocsJson = JSON.parse(test.blocs_json) as any[]
+            const blocsJson = JSON.parse(test.blocs_json) as Record<string, unknown>[]
 
             const [campWinRes] = await pool.execute<ResultSetHeader>(
               `INSERT INTO email_campaigns (tenant_id, created_by, name, category, sujet, expediteur, blocs_json, status, total_recipients)

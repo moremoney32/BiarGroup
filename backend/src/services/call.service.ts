@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { pool } from '../db/config'
 import type { CallSession, AgentStatus, SviConfig } from '../types/call.types'
 

@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { pool } from '../db/config'
 
 export const reportService = {

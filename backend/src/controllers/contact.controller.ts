@@ -1,4 +1,4 @@
-import { Request, Response } from 'express'
+﻿import { Request, Response } from 'express'
 import { z } from 'zod'
 import { contactService, Criterion } from '../services/contact.service'
 import { emailService } from '../services/email.service'
@@ -301,6 +301,7 @@ export const contactController = {
       }
     } else {
       // ── Parsing CSV ───────────────────────────────────────────────────────
+      // eslint-disable-next-line no-irregular-whitespace
       const text  = file.buffer.toString('utf-8').replace(/^﻿/, '') // strip BOM
       const lines = text.split(/\r?\n/).filter(l => l.trim())
       if (lines.length < 2) { sendError(res, 400, 'EMPTY_FILE', 'Fichier vide ou sans données'); return }

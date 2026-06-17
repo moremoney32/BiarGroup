@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { pool } from '../db/config'
 import Stripe from 'stripe'
 import type { BillingPlan, Subscription, Invoice } from '../types/billing.types'

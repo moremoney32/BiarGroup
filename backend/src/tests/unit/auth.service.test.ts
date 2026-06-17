@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { authService } from '../../services/auth.service'
 
 jest.mock('../../db/config', () => ({

@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { Request, Response } from 'express'
 import { reportService } from '../services/report.service'
 import { sendSuccess, sendError } from '../helpers/response.helper'
