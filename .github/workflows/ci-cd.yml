@@ -78,7 +78,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SERVER_PORT }}
           script: |
-            cd /root/BiarGroup
+            cd /home/biar/BiarGroup
             git pull origin main
             docker compose up -d --build backend frontend
             docker compose ps
