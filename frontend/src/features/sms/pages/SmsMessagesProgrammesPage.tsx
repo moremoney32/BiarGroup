@@ -159,10 +159,10 @@ export default function SmsMessagesProgrammesPage() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="px-6 py-5">
+      <div className="px-4 sm:px-6 py-5">
 
         {/* Header */}
-        <div className="mb-5 flex items-start justify-between">
+        <div className="mb-5 flex flex-wrap items-start gap-3 justify-between">
           <div>
             <h1 className="text-[22px] font-bold text-[#1F2937]">SMS Programmés</h1>
             <p className="mt-0.5 text-[13px] text-gray-500">Planifiez vos SMS pour un envoi automatique</p>
@@ -174,7 +174,7 @@ export default function SmsMessagesProgrammesPage() {
         </div>
 
         {/* KPI Cards */}
-        <div className="mb-5 grid grid-cols-3 gap-4">
+        <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
             { icon: Calendar, bg: '#EFF6FF', color: '#3B82F6', label: 'SMS programmés', value: loading ? '…' : pending },
             { icon: Send,     bg: '#F0FDF4', color: '#22C55E', label: 'SMS envoyés',    value: loading ? '…' : dispatched },
@@ -191,7 +191,7 @@ export default function SmsMessagesProgrammesPage() {
         </div>
 
         {/* Filtres */}
-        <div className="mb-4 flex gap-3">
+        <div className="mb-4 flex flex-col sm:flex-row gap-3">
           <div className="flex flex-1 items-center gap-2 rounded-xl bg-[#FFEEE6] px-4 py-2.5 ring-1 ring-orange-200 focus-within:ring-2 focus-within:ring-[#F4511E]/40">
             <Search size={14} className="shrink-0 text-orange-300" />
             <input type="text" value={search} onChange={e => setSearch(e.target.value)}

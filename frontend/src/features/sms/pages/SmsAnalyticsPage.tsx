@@ -11,7 +11,7 @@ const kpis = [
 export default function SmsAnalyticsPage() {
   return (
     <div className="min-h-full bg-white">
-      <div className="px-6 py-5">
+      <div className="px-4 sm:px-6 py-5">
         <div className="mb-6">
           <h1 className="text-[22px] font-bold text-[#1F2937]">Analytics SMS</h1>
           <p className="mt-0.5 text-[13px] text-gray-500">Analysez vos performances SMS en détail</p>

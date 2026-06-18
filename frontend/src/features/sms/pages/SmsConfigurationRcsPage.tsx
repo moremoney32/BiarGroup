@@ -26,10 +26,10 @@ export default function SmsConfigurationRcsPage() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="px-6 py-5">
+      <div className="px-4 sm:px-6 py-5">
 
         {/* Header */}
-        <div className="mb-5 flex items-center justify-between">
+        <div className="mb-5 flex flex-wrap items-center gap-3 justify-between">
           <div className="flex items-center gap-3">
             <Settings size={22} className="text-[#F4511E]" />
             <div>
@@ -54,7 +54,7 @@ export default function SmsConfigurationRcsPage() {
               <p className="text-[12px] text-[#16A34A]">Votre marque est vérifiée et approuvée pour l'envoi de messages RCS.</p>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
               { label: 'Vérification d\'identité', value: 'Validée',  color: '#16A34A' },
               { label: 'Conformité',                value: 'Conforme', color: '#16A34A' },
@@ -94,7 +94,7 @@ export default function SmsConfigurationRcsPage() {
             </div>
 
             {/* API Key + Secret */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">API Key *</label>
                 <div className="flex items-center gap-1 rounded-xl bg-[#FFEEE6] px-3 ring-1 ring-orange-200">

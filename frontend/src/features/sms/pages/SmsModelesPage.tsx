@@ -159,7 +159,7 @@ export default function SmsModelesPage() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="px-6 py-5">
+      <div className="px-4 sm:px-6 py-5">
 
         {/* Header */}
         <div className="mb-6 flex items-start justify-between">
