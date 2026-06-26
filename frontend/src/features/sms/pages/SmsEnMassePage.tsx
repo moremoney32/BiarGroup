@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   Send, CheckCircle2, XCircle, TrendingUp, Plus, ChevronDown,
   Zap, Settings2, Loader2, Trash2, Play, Eye, X, Clock,
-  AlertCircle, RefreshCw, Users, List,
+  AlertCircle, RefreshCw, Users, List, Pencil,
 } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -10,8 +11,9 @@ import {
 } from 'recharts'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
-import type { SmsCampaign, SmsSenderId, SmsContactList, SmsTemplate, CampaignStatus } from '../../../types/sms.types'
+import type { SmsCampaign, SmsSenderId, SmsContactList, SmsTemplate, CampaignStatus, CampaignType, UpdateCampaignPayload } from '../../../types/sms.types'
 import type { PaginationMeta } from '../../../services/sms.service'
+import { motion } from 'framer-motion'
 
 // GSM-7 counter
 const GSM7 = new Set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 \n\r@£$¥èéùìòçØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&\'()*+,-./:;<=>?¡ÄÖÑÜàäöñü§¿')
@@ -58,22 +60,36 @@ function deliveryRate(c: SmsCampaign) {
 interface NewCampaignModalProps {
   senderIds: SmsSenderId[]
   lists: SmsContactList[]
+  initialMessage?: string
   templates: SmsTemplate[]
+  editCampaign?: SmsCampaign
   onClose: () => void
   onCreated: (campaign: SmsCampaign, sendNow: boolean) => void
 }
 
-function NewCampaignModal({ senderIds, lists, templates, onClose, onCreated }: NewCampaignModalProps) {
-  const [name, setName]           = useState('')
-  const [senderId, setSenderId]   = useState('')
-  const [listIds, setListIds]     = useState<number[]>([])
-  const [message, setMessage]     = useState('')
-  const [scheduledAt, setSchAt]   = useState('')
-  const [useSchedule, setUseSch]  = useState(false)
-  const [senderOpen, setSOpen]    = useState(false)
-  const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState('')
-  const [step, setStep]           = useState<'form' | 'confirm'>('form')
+const CAMPAIGN_TYPES: { value: CampaignType; label: string; desc: string; color: string; bg: string }[] = [
+  { value: 'promotional',   label: 'Promotionnel',    desc: 'Offres, promos, marketing',   color: '#2563EB', bg: '#EFF6FF' },
+  { value: 'transactional', label: 'Transactionnel',  desc: 'Confirmations, reçus, alertes', color: '#7C3AED', bg: '#F5F3FF' },
+  { value: 'otp',           label: 'OTP',             desc: 'Codes de vérification',        color: '#16A34A', bg: '#F0FDF4' },
+  { value: 'notification',  label: 'Notification',    desc: 'Rappels, infos, événements',   color: '#EA580C', bg: '#FFF7ED' },
+]
+
+function NewCampaignModal({ senderIds, lists, templates, initialMessage = '', editCampaign, onClose, onCreated }: NewCampaignModalProps) {
+  const isEdit = Boolean(editCampaign)
+  const [name, setName]               = useState(editCampaign?.name ?? '')
+  const [campaignType, setCampType]   = useState(editCampaign?.campaign_type ?? 'promotional')
+  const [senderId, setSenderId]       = useState(editCampaign?.sender_id ?? '')
+  const [listIds, setListIds]         = useState<number[]>([])
+  const [message, setMessage]         = useState(editCampaign?.message ?? initialMessage)
+  const initSched = editCampaign?.scheduled_at
+    ? new Date(editCampaign.scheduled_at).toISOString().slice(0, 16)
+    : ''
+  const [scheduledAt, setSchAt]       = useState(initSched)
+  const [useSchedule, setUseSch]      = useState(Boolean(editCampaign?.scheduled_at))
+  const [senderOpen, setSOpen]        = useState(false)
+  const [loading, setLoading]         = useState(false)
+  const [error, setError]             = useState('')
+  const [step, setStep]               = useState<'form' | 'confirm'>('form')
   const sms = useMemo(() => calcSms(message), [message])
 
   const totalRecipients = lists
@@ -89,9 +105,9 @@ function NewCampaignModal({ senderIds, lists, templates, onClose, onCreated }: N
   }
 
   function validate() {
-    if (!name.trim())         { setError('Nom de campagne requis'); return false }
-    if (listIds.length === 0) { setError('Sélectionnez au moins une liste'); return false }
-    if (!message.trim())      { setError('Message requis'); return false }
+    if (!name.trim())                           { setError('Nom de campagne requis'); return false }
+    if (!isEdit && listIds.length === 0)        { setError('Sélectionnez au moins une liste'); return false }
+    if (!message.trim())                        { setError('Message requis'); return false }
     return true
   }
 
@@ -99,25 +115,38 @@ function NewCampaignModal({ senderIds, lists, templates, onClose, onCreated }: N
     if (!validate()) return
     setLoading(true); setError('')
     try {
-      const payload = {
-        name: name.trim(),
-        message: message.trim(),
-        senderId,
-        listIds,
-        ...(useSchedule && scheduledAt ? { scheduledAt: new Date(scheduledAt).toISOString() } : {}),
-      }
-      const campaign = await smsService.createCampaign(payload)
-
-      if (willSend) {
-        await smsService.sendCampaign(campaign.id)
-        // Recharger pour avoir le statut mis à jour
-        const updated = await smsService.getCampaign(campaign.id)
-        onCreated(updated, true)
-      } else {
+      let campaign: SmsCampaign
+      if (isEdit && editCampaign) {
+        const upd: UpdateCampaignPayload = {
+          name: name.trim(),
+          message: message.trim(),
+          senderId,
+          ...(listIds.length > 0 ? { listIds } : {}),
+          scheduledAt: useSchedule && scheduledAt ? new Date(scheduledAt).toISOString() : null,
+        }
+        campaign = await smsService.updateCampaign(editCampaign.id, upd)
         onCreated(campaign, false)
+      } else {
+        const payload = {
+          name: name.trim(),
+          message: message.trim(),
+          senderId,
+          listIds,
+          campaignType,
+          ...(useSchedule && scheduledAt ? { scheduledAt: new Date(scheduledAt).toISOString() } : {}),
+        }
+        campaign = await smsService.createCampaign(payload)
+        if (willSend) {
+          await smsService.sendCampaign(campaign.id)
+          const updated = await smsService.getCampaign(campaign.id)
+          onCreated(updated, true)
+        } else {
+          onCreated(campaign, false)
+        }
       }
     } catch (err: unknown) {
-      setError((err as { message?: string })?.message ?? 'Erreur lors de la création')
+      const msg = (err as { message?: string })?.message
+      setError(msg ?? (isEdit ? 'Erreur lors de la modification' : 'Erreur lors de la création'))
     } finally {
       setLoading(false)
     }
@@ -129,7 +158,7 @@ function NewCampaignModal({ senderIds, lists, templates, onClose, onCreated }: N
 
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 shrink-0">
-          <h2 className="text-[15px] font-bold text-[#1F2937]">Nouvelle Campagne SMS en Masse</h2>
+          <h2 className="text-[15px] font-bold text-[#1F2937]">{isEdit ? 'Modifier la campagne' : 'Nouvelle Campagne SMS en Masse'}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={14} /></button>
         </div>
 
@@ -145,6 +174,26 @@ function NewCampaignModal({ senderIds, lists, templates, onClose, onCreated }: N
               />
             </div>
 
+            {/* Type de campagne */}
+            <div>
+              <label className="mb-1.5 block text-[11px] font-semibold text-gray-600">Type de campagne *</label>
+              <div className="grid grid-cols-2 gap-2">
+                {CAMPAIGN_TYPES.map(t => {
+                  const selected = campaignType === t.value
+                  return (
+                    <button key={t.value} type="button" onClick={() => setCampType(t.value)}
+                      className={`flex items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors ${selected ? 'border-[#F4511E] bg-orange-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                      <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: selected ? '#F4511E' : t.color, opacity: selected ? 1 : 0.5 }} />
+                      <div>
+                        <p className={`text-[11px] font-bold ${selected ? 'text-[#F4511E]' : 'text-[#1F2937]'}`}>{t.label}</p>
+                        <p className="text-[10px] text-gray-400">{t.desc}</p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             {/* Sender ID */}
             <div>
               <label className="mb-1.5 block text-[11px] font-semibold text-gray-600">
@@ -154,7 +203,7 @@ function NewCampaignModal({ senderIds, lists, templates, onClose, onCreated }: N
                 <button onClick={() => setSOpen(o => !o)}
                   className="flex w-full items-center justify-between rounded-xl border border-gray-200 px-4 py-2.5 text-[12px] text-[#1F2937] hover:bg-gray-50">
                   <span className={senderId ? 'font-semibold' : 'italic text-gray-400'}>
-                    {senderId || 'Sans Sender ID (AT défaut)'}
+                    {senderId || 'Sans Sender ID (expéditeur par défaut)'}
                   </span>
                   <ChevronDown size={13} className={`transition-transform ${senderOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -162,7 +211,7 @@ function NewCampaignModal({ senderIds, lists, templates, onClose, onCreated }: N
                   <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-xl border border-gray-100 bg-white shadow-lg">
                     <button onClick={() => { setSenderId(''); setSOpen(false) }}
                       className={`w-full px-4 py-2.5 text-left text-[12px] hover:bg-orange-50 ${senderId === '' ? 'font-bold text-[#F4511E]' : 'italic text-gray-500'}`}>
-                      Sans Sender ID (AT défaut)
+                      Sans Sender ID (expéditeur par défaut)
                     </button>
                     {senderIds.map(s => (
                       <button key={s.id} onClick={() => { setSenderId(s.sender_id); setSOpen(false) }}
@@ -265,8 +314,12 @@ function NewCampaignModal({ senderIds, lists, templates, onClose, onCreated }: N
             <p className="text-[13px] text-gray-500 mb-1">
               <span className="font-semibold text-[#1F2937]">{name}</span>
             </p>
+            <p className="text-[13px] text-gray-500 mb-1">
+              ~<span className="font-bold text-[#F4511E]">{fmtNum(totalRecipients)}</span> destinataires · {sms.segs} SMS/contact
+            </p>
             <p className="text-[13px] text-gray-500 mb-6">
-              ~<span className="font-bold text-[#F4511E]">{fmtNum(totalRecipients)}</span> destinataires · {sms.segs} SMS/contact · Sender : <span className="font-bold">{senderId}</span>
+              Type : <span className="font-bold text-[#1F2937]">{CAMPAIGN_TYPES.find(t => t.value === campaignType)?.label}</span>
+              {senderId && <> · Sender : <span className="font-bold">{senderId}</span></>}
             </p>
             <p className="text-[11px] text-gray-400 mb-4">L'envoi sera délégué à la file d'attente. Vous pourrez suivre la progression dans la liste.</p>
           </div>
@@ -279,17 +332,25 @@ function NewCampaignModal({ senderIds, lists, templates, onClose, onCreated }: N
               <button onClick={onClose} className="rounded-xl border border-gray-200 px-4 py-2.5 text-[12px] text-gray-600 hover:bg-gray-50">
                 Annuler
               </button>
-              <div className="flex gap-2">
+              {isEdit ? (
                 <button onClick={() => handleSubmit(false)} disabled={loading}
-                  className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-4 py-2.5 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
-                  {loading ? <Loader2 size={12} className="animate-spin" /> : <Clock size={12} />}
-                  Sauvegarder brouillon
+                  className="flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-5 py-2.5 text-[12px] font-bold text-white hover:bg-[#d9400f] disabled:opacity-60">
+                  {loading ? <Loader2 size={12} className="animate-spin" /> : <Pencil size={12} />}
+                  Enregistrer les modifications
                 </button>
-                <button onClick={() => { if (validate()) { setStep('confirm'); setSendNow(true) } }} disabled={loading}
-                  className="flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-4 py-2.5 text-[12px] font-bold text-white hover:bg-[#d9400f] disabled:opacity-60">
-                  <Play size={12} /> Envoyer maintenant
-                </button>
-              </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button onClick={() => handleSubmit(false)} disabled={loading}
+                    className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-4 py-2.5 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+                    {loading ? <Loader2 size={12} className="animate-spin" /> : <Clock size={12} />}
+                    Sauvegarder brouillon
+                  </button>
+                  <button onClick={() => { if (validate()) setStep('confirm') }} disabled={loading}
+                    className="flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-4 py-2.5 text-[12px] font-bold text-white hover:bg-[#d9400f] disabled:opacity-60">
+                    <Play size={12} /> Envoyer maintenant
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -309,15 +370,102 @@ function NewCampaignModal({ senderIds, lists, templates, onClose, onCreated }: N
   )
 }
 
+// ── Modal : Détail campagne ───────────────────────────────────
+
+interface CampaignDetailModalProps { campaign: SmsCampaign; onClose: () => void }
+
+function CampaignDetailModal({ campaign: c, onClose }: CampaignDetailModalProps) {
+  const delivPct = c.total_sent > 0
+    ? Math.round((c.total_delivered / c.total_sent) * 1000) / 10
+    : 0
+  const failPct = c.total_sent > 0
+    ? Math.round((c.total_failed / c.total_sent) * 1000) / 10
+    : 0
+
+  const rows = [
+    { label: 'Destinataires',  value: fmtNum(c.total_recipients) },
+    { label: 'Envoyés (Infobip)', value: fmtNum(c.total_sent) },
+    { label: 'Délivrés (DLR)', value: `${fmtNum(c.total_delivered)} — ${delivPct}%` },
+    { label: 'Échoués',        value: `${fmtNum(c.total_failed)} — ${failPct}%` },
+    { label: 'Non livrés',     value: fmtNum(c.total_undelivered) },
+    { label: 'Sender ID',      value: c.sender_id || '—' },
+    { label: 'Statut',         value: c.status },
+    { label: 'Créée le',       value: fmtDate(c.created_at) },
+    { label: 'Envoyée le',     value: c.sent_at ? fmtDate(c.sent_at) : '—' },
+  ]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div>
+            <h2 className="text-[15px] font-bold text-[#1F2937] truncate max-w-[340px]">{c.name}</h2>
+            <p className="mt-0.5 text-[11px] text-gray-400">Détails de la campagne #{c.id}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={14} /></button>
+        </div>
+
+        {/* Stats visuelles */}
+        <div className="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100">
+          {[
+            { label: 'Envoyés',  value: fmtNum(c.total_sent),      color: '#3B82F6' },
+            { label: 'Délivrés', value: fmtNum(c.total_delivered), color: '#22C55E' },
+            { label: 'Échoués',  value: fmtNum(c.total_failed),    color: '#EF4444' },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="px-4 py-3 text-center">
+              <p className="text-[18px] font-bold" style={{ color }}>{value}</p>
+              <p className="text-[10px] text-gray-400">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Progress délivrabilité */}
+        <div className="px-6 py-3 border-b border-gray-100">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-semibold text-gray-600">Taux de délivrance</span>
+            <span className="text-[11px] font-bold text-[#22C55E]">{delivPct}%</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+            <div className="h-full rounded-full bg-[#22C55E] transition-all" style={{ width: `${delivPct}%` }} />
+          </div>
+        </div>
+
+        {/* Tableau infos */}
+        <div className="px-6 py-4 space-y-2">
+          {rows.map(({ label, value }) => (
+            <div key={label} className="flex items-center justify-between">
+              <span className="text-[11px] text-gray-500">{label}</span>
+              <span className="text-[12px] font-semibold text-[#1F2937] max-w-[55%] text-right truncate">{value}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Message */}
+        <div className="mx-6 mb-4 rounded-xl bg-gray-50 px-4 py-3">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Message</p>
+          <p className="text-[12px] text-[#1F2937] whitespace-pre-wrap leading-relaxed">{c.message}</p>
+        </div>
+
+        <div className="flex justify-end border-t border-gray-100 px-6 py-4">
+          <button onClick={onClose} className="rounded-xl border border-gray-200 px-5 py-2 text-[12px] font-semibold text-gray-600 hover:bg-gray-50">
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Onglet Campagnes ──────────────────────────────────────────
 
 interface CampagnesTabProps {
   senderIds: SmsSenderId[]
   lists: SmsContactList[]
   templates: SmsTemplate[]
+  initialMessage?: string
 }
 
-function CampagnesTab({ senderIds, lists, templates }: CampagnesTabProps) {
+function CampagnesTab({ senderIds, lists, templates, initialMessage = '' }: CampagnesTabProps) {
   const [campaigns, setCampaigns] = useState<SmsCampaign[]>([])
   const [meta, setMeta]           = useState<PaginationMeta | null>(null)
   const [page, setPage]           = useState(1)
@@ -325,7 +473,9 @@ function CampagnesTab({ senderIds, lists, templates }: CampagnesTabProps) {
   const [statusFilter, setStatus] = useState('')
   const [sending, setSending]     = useState<number | null>(null)
   const [deleting, setDeleting]   = useState<number | null>(null)
-  const [showNew, setShowNew]     = useState(false)
+  const [showNew, setShowNew]     = useState(initialMessage !== '')
+  const [editCamp, setEditCamp]   = useState<SmsCampaign | null>(null)
+  const [viewCampaign, setView]   = useState<SmsCampaign | null>(null)
   const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null)
 
   function showToast(msg: string, ok = true) {
@@ -347,6 +497,14 @@ function CampagnesTab({ senderIds, lists, templates }: CampagnesTabProps) {
   }, [])
 
   useEffect(() => { fetchCampaigns(page, statusFilter) }, [page, statusFilter, fetchCampaigns])
+
+  // Polling auto quand au moins une campagne est en cours d'envoi
+  useEffect(() => {
+    const hasSending = campaigns.some(c => c.status === 'sending' || c.status === 'queued')
+    if (!hasSending) return
+    const t = setInterval(() => fetchCampaigns(page, statusFilter), 15_000)
+    return () => clearInterval(t)
+  }, [campaigns, page, statusFilter, fetchCampaigns])
 
   async function handleSend(campaign: SmsCampaign) {
     if (!confirm(`Envoyer "${campaign.name}" à tous les contacts des listes liées ?`)) return
@@ -376,7 +534,8 @@ function CampagnesTab({ senderIds, lists, templates }: CampagnesTabProps) {
     }
   }
 
-  const canSend = (c: SmsCampaign) => c.status === 'draft' || c.status === 'scheduled'
+  const canSend   = (c: SmsCampaign) => c.status === 'draft' || c.status === 'scheduled'
+  const canEdit   = (c: SmsCampaign) => c.status === 'draft' || c.status === 'scheduled'
   const canDelete = (c: SmsCampaign) => c.status === 'draft' || c.status === 'scheduled' || c.status === 'failed'
 
   const STATUSES: { value: string; label: string }[] = [
@@ -385,7 +544,8 @@ function CampagnesTab({ senderIds, lists, templates }: CampagnesTabProps) {
     { value: 'scheduled', label: 'Programmées' },
     { value: 'sending', label: 'En cours' },
     { value: 'sent', label: 'Envoyées' },
-    { value: 'failed', label: 'Échouées' },
+    { value: 'failed',    label: 'Échouées' },
+    { value: 'cancelled', label: 'Annulées' },
   ]
 
   return (
@@ -475,7 +635,13 @@ function CampagnesTab({ senderIds, lists, templates }: CampagnesTabProps) {
                             {sending === c.id ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
                           </button>
                         )}
-                        <button title="Voir détails"
+                        {canEdit(c) && (
+                          <button onClick={() => setEditCamp(c)} title="Modifier"
+                            className="rounded-lg p-1.5 text-[#7C3AED] hover:bg-purple-50 transition-colors">
+                            <Pencil size={13} />
+                          </button>
+                        )}
+                        <button title="Voir détails" onClick={() => setView(c)}
                           className="rounded-lg p-1.5 text-[#3B82F6] hover:bg-blue-50 transition-colors">
                           <Eye size={13} />
                         </button>
@@ -513,6 +679,7 @@ function CampagnesTab({ senderIds, lists, templates }: CampagnesTabProps) {
           senderIds={senderIds}
           lists={lists}
           templates={templates}
+          initialMessage={initialMessage}
           onClose={() => setShowNew(false)}
           onCreated={(campaign, wasSent) => {
             setShowNew(false)
@@ -522,6 +689,25 @@ function CampagnesTab({ senderIds, lists, templates }: CampagnesTabProps) {
             fetchCampaigns(page, statusFilter)
           }}
         />
+      )}
+
+      {editCamp && (
+        <NewCampaignModal
+          senderIds={senderIds}
+          lists={lists}
+          templates={templates}
+          editCampaign={editCamp}
+          onClose={() => setEditCamp(null)}
+          onCreated={(campaign) => {
+            setEditCamp(null)
+            showToast(`Campagne "${campaign.name}" mise à jour`)
+            fetchCampaigns(page, statusFilter)
+          }}
+        />
+      )}
+
+      {viewCampaign && (
+        <CampaignDetailModal campaign={viewCampaign} onClose={() => setView(null)} />
       )}
     </div>
   )
@@ -543,7 +729,18 @@ const OP_DATA = [
   { name: 'Orange',  value: 1, color: '#F97316' },
 ]
 
+const fadeUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+}
+const stagger = {
+  animate: { transition: { staggerChildren: 0.07 } },
+}
+
 export default function SmsEnMassePage() {
+  const location = useLocation()
+  const templateFromNav = (location.state as { templateBody?: string } | null)?.templateBody ?? ''
+
   const [activeTab, setActiveTab] = useState<Tab>('Campagnes')
 
   // Données partagées entre les tabs
@@ -552,6 +749,8 @@ export default function SmsEnMassePage() {
   const [templates, setTemplates] = useState<SmsTemplate[]>([])
   const [overview, setOverview]   = useState({ totalSent: 0, totalDelivered: 0, totalFailed: 0, deliveryRate: 0, activeCampaigns: 0 })
   const [loadingInit, setInit]    = useState(true)
+  // Ouvre la modale automatiquement si on vient de "Utiliser" un template
+  const fromTemplate = templateFromNav
 
   useEffect(() => {
     Promise.all([
@@ -584,26 +783,26 @@ export default function SmsEnMassePage() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="px-6 py-5">
+      <motion.div className="px-6 py-5" variants={stagger} initial="initial" animate="animate">
 
         {/* Header */}
-        <div className="mb-6">
+        <motion.div className="mb-6" variants={fadeUp}>
           <h1 className="text-[22px] font-bold text-[#1F2937]">SMS Bulk Marketing</h1>
           <p className="mt-0.5 text-[13px] text-gray-500">Créez et gérez vos campagnes SMS en masse</p>
-        </div>
+        </motion.div>
 
         {/* KPI Cards */}
-        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <motion.div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4" variants={stagger}>
           {kpiCards.map(({ icon: Icon, bg, color, label, value }) => (
-            <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+            <motion.div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm" variants={fadeUp}>
               <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
                 <Icon size={16} style={{ color }} />
               </div>
               <p className="text-[20px] font-bold text-[#1F2937]">{value}</p>
               <p className="mt-0.5 text-[11px] text-gray-500">{label}</p>
-            </div>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
 
         {/* Infos listes / sender IDs */}
         <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -673,7 +872,7 @@ export default function SmsEnMassePage() {
         </div>
 
         {activeTab === 'Campagnes' && (
-          <CampagnesTab senderIds={senderIds} lists={lists} templates={templates} />
+          <CampagnesTab senderIds={senderIds} lists={lists} templates={templates} initialMessage={fromTemplate} />
         )}
 
         {activeTab === 'API & SMPP' && (
@@ -705,7 +904,7 @@ export default function SmsEnMassePage() {
           </div>
         )}
 
-      </div>
+      </motion.div>
       <DashboardFooter />
     </div>
   )

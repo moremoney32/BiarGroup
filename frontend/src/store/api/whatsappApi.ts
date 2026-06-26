@@ -9,7 +9,7 @@ export const whatsappApi = createApi({
   tagTypes: ['WaCampaign', 'WaTemplate', 'WaMessage'],
   endpoints: (builder) => ({
     getCampaigns: builder.query<PaginatedResponse<WaCampaign>, PaginationQuery>({
-      query: (params) => ({ url: '/whatsapp/campaigns', method: 'GET', params }),
+      query: (params) => ({ url: '/whatsapp/campaigns', method: 'GET', params: params as Record<string, unknown> }),
       providesTags: ['WaCampaign'],
     }),
 

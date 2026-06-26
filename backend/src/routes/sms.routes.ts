@@ -1,9 +1,22 @@
 import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
+import multer from 'multer'
 import { smsController } from '../controllers/sms.controller'
 import { authMiddleware } from '../middlewares/auth.middleware'
 import { rbacMiddleware } from '../middlewares/rbac.middleware'
 import { tenantMiddleware } from '../middlewares/tenant.middleware'
+
+// Multer mémoire pour import CSV (pas de fichier sur disque)
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+  fileFilter: (_req, file, cb) => {
+    const ok = file.mimetype === 'text/csv'
+      || file.originalname.toLowerCase().endsWith('.csv')
+      || file.mimetype === 'text/plain'
+    cb(null, ok)
+  },
+})
 
 const router = Router()
 
@@ -75,6 +88,8 @@ router.post('/contact-lists/:id/contacts', clientAndUp, smsController.addContact
 // Import depuis le CRM global
 router.get('/crm-contacts',                              smsController.getCrmContacts)
 router.post('/contact-lists/:id/import-from-crm', clientAndUp, smsController.importFromCrm)
+// Import CSV
+router.post('/contact-lists/:id/import-csv', clientAndUp, csvUpload.single('file'), smsController.importContactsCsv)
 
 // ── Réducteur d'URL (authentifié) ────────────────────────────
 router.get('/links',           smsController.getShortLinks)
@@ -84,5 +99,10 @@ router.get('/links/:id/stats', smsController.getShortLinkStats)
 
 // ── Analytics ────────────────────────────────────────────────
 router.get('/analytics/overview', smsController.getOverviewStats)
+
+// ── Clés API ─────────────────────────────────────────────────
+router.get('/api-keys',        clientAndUp, smsController.getApiKeys)
+router.post('/api-keys',       clientAndUp, smsController.createApiKey)
+router.delete('/api-keys/:id', clientAndUp, smsController.deleteApiKey)
 
 export default router

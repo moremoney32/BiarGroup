@@ -9,7 +9,7 @@ export const smsApi = createApi({
   tagTypes: ['SmsCampaign', 'SmsTemplate', 'SmsMessage'],
   endpoints: (builder) => ({
     getCampaigns: builder.query<PaginatedResponse<SmsCampaign>, PaginationQuery>({
-      query: (params) => ({ url: '/sms/campaigns', method: 'GET', params }),
+      query: (params) => ({ url: '/sms/campaigns', method: 'GET', params: params as Record<string, unknown> }),
       providesTags: ['SmsCampaign'],
     }),
 
@@ -44,7 +44,7 @@ export const smsApi = createApi({
     }),
 
     getMessages: builder.query<PaginatedResponse<SmsMessage>, PaginationQuery>({
-      query: (params) => ({ url: '/sms/messages', method: 'GET', params }),
+      query: (params) => ({ url: '/sms/messages', method: 'GET', params: params as Record<string, unknown> }),
       providesTags: ['SmsMessage'],
     }),
   }),

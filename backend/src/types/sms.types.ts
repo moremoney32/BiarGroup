@@ -19,6 +19,8 @@ export type ScheduledStatus =
 
 // ─── Campagnes ───────────────────────────────────────────────
 
+export type CampaignType = 'promotional' | 'transactional' | 'otp' | 'notification'
+
 export interface SmsCampaign {
   id: number
   tenantId: number
@@ -26,6 +28,7 @@ export interface SmsCampaign {
   name: string
   message: string
   senderId: string
+  campaignType: CampaignType
   status: CampaignStatus
   scheduledAt: Date | null
   sentAt: Date | null
@@ -117,6 +120,22 @@ export interface SmsScheduled {
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null
+}
+
+// ─── Clés API ────────────────────────────────────────────────
+
+export interface SmsApiKey {
+  id: number
+  tenant_id: number
+  created_by: number | null
+  name: string
+  key_preview: string  // "bsk_live_****...****abcd" — jamais la clé brute
+  module: 'sms' | 'email' | 'whatsapp' | 'all'
+  is_active: boolean
+  requests_count: number
+  last_used_at: Date | null
+  expires_at: Date | null
+  created_at: Date
 }
 
 // ─── Listes de contacts SMS ──────────────────────────────────

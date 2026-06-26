@@ -1,8 +1,10 @@
-import { useState, useMemo, useEffect } from 'react'
-import { Send, Clock, Info, ChevronDown, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Send, Clock, Info, ChevronDown, Loader2, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
-import type { SmsSenderId } from '../../../types/sms.types'
+import type { SmsSenderId, SmsMessage } from '../../../types/sms.types'
+import { motion } from 'framer-motion'
 
 // GSM-7 charset
 const GSM7 = new Set(
@@ -87,9 +89,25 @@ function PhoneMockup({ message, senderId }: PhoneMockupProps) {
   )
 }
 
+// ── Statut badge ──────────────────────────────────────────────
+
+const STATUS_MSG: Record<string, { label: string; bg: string; color: string }> = {
+  queued:      { label: 'En file',  bg: '#EFF6FF', color: '#2563EB' },
+  sent:        { label: 'Envoyé',   bg: '#F0FDF4', color: '#16A34A' },
+  delivered:   { label: 'Livré',    bg: '#F0FDF4', color: '#15803D' },
+  failed:      { label: 'Échoué',   bg: '#FEF2F2', color: '#DC2626' },
+  undelivered: { label: 'Non livré',bg: '#FFF7ED', color: '#EA580C' },
+}
+
 type SendResult = 'sent' | 'failed' | null
 
+const fadeUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+}
+
 export default function SmsUniquePage() {
+  const navigate = useNavigate()
   const [phone, setPhone]           = useState('')
   const [senderId, setSenderId]     = useState('')
   const [message, setMessage]       = useState('')
@@ -101,15 +119,32 @@ export default function SmsUniquePage() {
   const [senderIds, setSenderIds]   = useState<SmsSenderId[]>([])
   const [loadingIds, setLoadingIds] = useState(true)
 
+  const [history, setHistory]       = useState<SmsMessage[]>([])
+  const [loadingHist, setLoadHist]  = useState(true)
+  const [histPage, setHistPage]     = useState(1)
+  const [histTotal, setHistTotal]   = useState(0)
+  const HIST_LIMIT = 10
+
+  const fetchHistory = useCallback(async (p: number) => {
+    setLoadHist(true)
+    try {
+      const res = await smsService.getMessages({ singleOnly: true, page: p, limit: HIST_LIMIT })
+      setHistory(res.messages)
+      setHistTotal(res.meta.total)
+    } catch {
+      setHistory([])
+    } finally {
+      setLoadHist(false)
+    }
+  }, [])
+
   useEffect(() => {
     smsService.getSenderIds()
-      .then(ids => {
-        setSenderIds(ids.filter(s => s.status === 'approved'))
-        // senderId reste '' → AT utilisera le username par défaut
-      })
+      .then(ids => setSenderIds(ids.filter(s => s.status === 'approved')))
       .catch(() => setSenderIds([]))
       .finally(() => setLoadingIds(false))
-  }, [])
+    fetchHistory(1)
+  }, [fetchHistory])
 
   const sms = useMemo(() => calcSms(message), [message])
 
@@ -128,6 +163,8 @@ export default function SmsUniquePage() {
       if (result.status === 'sent') {
         setMessage('')
         setPhone('')
+        fetchHistory(1)
+        setHistPage(1)
       }
     } catch (err: unknown) {
       const msg = (err as { message?: string })?.message ?? "Erreur lors de l'envoi"
@@ -142,7 +179,7 @@ export default function SmsUniquePage() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="px-6 py-5">
+      <motion.div className="px-6 py-5" variants={fadeUp} initial="initial" animate="animate">
 
         <div className="mb-6">
           <h1 className="text-[22px] font-bold text-[#1F2937]">SMS Simple (Single)</h1>
@@ -183,7 +220,7 @@ export default function SmsUniquePage() {
                   </div>
                 ) : senderIds.length === 0 ? (
                   <div className="rounded-xl bg-[#FFF7ED] px-4 py-3 text-[12px] text-[#92400E]">
-                    Aucun Sender ID approuvé — l'envoi utilisera l'expéditeur AT par défaut.{' '}
+                    Aucun Sender ID approuvé — l'envoi utilisera l'expéditeur Infobip par défaut.{' '}
                     <span className="text-[11px] text-gray-500">Ajoutez un Sender ID dans Identifiants pour personnaliser.</span>
                   </div>
                 ) : (
@@ -192,7 +229,7 @@ export default function SmsUniquePage() {
                       onClick={() => setSenderOpen(o => !o)}
                       className="flex w-full items-center justify-between rounded-xl bg-[#F4511E] px-4 py-3 text-[13px] font-semibold text-white"
                     >
-                      <span>{senderId || 'Sans Sender ID (AT défaut)'}</span>
+                      <span>{senderId || 'Sans Sender ID (expéditeur par défaut)'}</span>
                       <ChevronDown size={15} className={`transition-transform ${senderOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {senderOpen && (
@@ -203,7 +240,7 @@ export default function SmsUniquePage() {
                             senderId === '' ? 'font-semibold text-[#F4511E]' : 'text-gray-500 italic'
                           }`}
                         >
-                          Sans Sender ID (AT défaut)
+                          Sans Sender ID (expéditeur par défaut)
                         </button>
                         {senderIds.map(s => (
                           <button
@@ -289,7 +326,9 @@ export default function SmsUniquePage() {
                     </>
                   )}
                 </button>
-                <button className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-5 py-3 text-[13px] font-semibold text-gray-700 hover:bg-gray-50">
+                <button
+                  onClick={() => navigate('/app/sms/programmes')}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-5 py-3 text-[13px] font-semibold text-gray-700 hover:bg-gray-50">
                   <Clock size={15} />
                   Programmer
                 </button>
@@ -376,7 +415,97 @@ export default function SmsUniquePage() {
           </div>
 
         </div>
-      </div>
+        {/* ── Historique SMS uniques ── */}
+        <div className="mt-6">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-[15px] font-bold text-[#1F2937]">Historique des envois</h2>
+            <button onClick={() => { setHistPage(1); fetchHistory(1) }}
+              className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-1.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50">
+              <RefreshCw size={11} /> Actualiser
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+            {loadingHist ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 size={18} className="animate-spin text-gray-300" />
+              </div>
+            ) : history.length === 0 ? (
+              <div className="py-10 text-center text-[12px] text-gray-400">
+                Aucun SMS envoyé pour l'instant
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-50 bg-gray-50/60">
+                      {['Destinataire', 'Sender ID', 'Message', 'Statut', 'Date'].map(h => (
+                        <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400 whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map(m => {
+                      const st = STATUS_MSG[m.status] ?? STATUS_MSG.sent
+                      return (
+                        <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                          <td className="px-4 py-3 text-[12px] font-semibold text-[#1F2937] whitespace-nowrap">
+                            +{m.phone}
+                          </td>
+                          <td className="px-4 py-3">
+                            {m.sender_id
+                              ? <span className="rounded-full bg-[#FFEEE6] px-2.5 py-0.5 text-[10px] font-bold text-[#F4511E]">{m.sender_id}</span>
+                              : <span className="text-[11px] text-gray-400">—</span>
+                            }
+                          </td>
+                          <td className="px-4 py-3 max-w-[260px]">
+                            <p className="text-[11px] text-gray-600 truncate">{m.body}</p>
+                            <p className="text-[10px] text-gray-400">{m.segments} segment{m.segments > 1 ? 's' : ''}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
+                              style={{ backgroundColor: st.bg, color: st.color }}>
+                              {m.status === 'delivered'
+                                ? '✓✓ ' + st.label
+                                : st.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-[11px] text-gray-400 whitespace-nowrap">
+                            {new Date(m.created_at).toLocaleString('fr-FR', {
+                              day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+                            })}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Pagination historique */}
+            {histTotal > HIST_LIMIT && (
+              <div className="flex items-center justify-between border-t border-gray-50 px-5 py-3">
+                <span className="text-[11px] text-gray-400">{histTotal} envoi(s) au total</span>
+                <div className="flex gap-1">
+                  <button onClick={() => { setHistPage(p => p - 1); fetchHistory(histPage - 1) }}
+                    disabled={histPage === 1}
+                    className="rounded px-2 py-1 text-[11px] text-gray-500 hover:bg-gray-100 disabled:opacity-40">
+                    Précédent
+                  </button>
+                  <span className="px-2 py-1 text-[11px] text-gray-500">Page {histPage}</span>
+                  <button onClick={() => { setHistPage(p => p + 1); fetchHistory(histPage + 1) }}
+                    disabled={histPage * HIST_LIMIT >= histTotal}
+                    className="rounded px-2 py-1 text-[11px] text-gray-500 hover:bg-gray-100 disabled:opacity-40">
+                    Suivant
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+      </motion.div>
       <DashboardFooter />
     </div>
   )

@@ -1,15 +1,25 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link, MousePointer, Globe, TrendingUp, Plus, Copy, CheckCircle2, Loader2, Trash2 } from 'lucide-react'
+import { Link, MousePointer, Globe, TrendingUp, Plus, Copy, CheckCircle2, Loader2, Trash2, BarChart2, X } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
+import { useToast } from '../../../hooks/useToast'
 import type { SmsShortLink } from '../../../types/sms.types'
+import { motion } from 'framer-motion'
 
 const TABS = ['+ Créer un lien', 'Mes liens'] as const
 type Tab = typeof TABS[number]
 
-const BASE_DOMAIN = window.location.hostname === 'localhost' ? 'localhost:5000' : 'actr.link'
+// Base URL du redirect — doit avoir http(s):// pour être cliquable dans un SMS
+const REDIRECT_BASE = (import.meta.env.VITE_API_URL as string ?? 'http://localhost:5000/api/v1').replace(/\/+$/, '')
+
+const fadeUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+}
 
 export default function SmsReducteurUrlPage() {
+  const toast = useToast()
   const [activeTab, setActiveTab]   = useState<Tab>('+ Créer un lien')
   const [links, setLinks]           = useState<SmsShortLink[]>([])
   const [loadingLinks, setLoadingL] = useState(false)
@@ -21,8 +31,14 @@ export default function SmsReducteurUrlPage() {
   const [creating, setCreating] = useState(false)
   const [created, setCreated]   = useState<SmsShortLink | null>(null)
   const [errCreate, setErrC]    = useState('')
-  const [copied, setCopied]     = useState(false)
+  const [copiedId, setCopiedId] = useState<number | 'new' | null>(null)
   const [deleting, setDeleting] = useState<number | null>(null)
+
+  // Modal stats
+  const [statsLink, setStatsLink]   = useState<SmsShortLink | null>(null)
+  const [statsData, setStatsData]   = useState<{ date: string; count: number }[]>([])
+  const [statsLoading, setStatsL]   = useState(false)
+  const [statsTotal, setStatsTotal] = useState(0)
 
   const fetchLinks = useCallback(async () => {
     setLoadingL(true)
@@ -39,7 +55,8 @@ export default function SmsReducteurUrlPage() {
   useEffect(() => { fetchLinks() }, [fetchLinks])
 
   const totalClicks = links.reduce((s, l) => s + l.clicks, 0)
-  const activeLinks = links.filter(l => l.active).length
+  const isActive = (l: SmsShortLink) => !l.expires_at || new Date(l.expires_at) > new Date()
+  const activeLinks = links.filter(isActive).length
 
   async function handleCreate() {
     if (!url.trim()) return
@@ -58,32 +75,48 @@ export default function SmsReducteurUrlPage() {
     }
   }
 
+  async function handleShowStats(link: SmsShortLink) {
+    setStatsLink(link)
+    setStatsData([])
+    setStatsL(true)
+    try {
+      const res = await smsService.getShortLinkStats(link.id)
+      setStatsTotal(res.total_clicks)
+      setStatsData(res.clicks_by_day)
+    } catch {
+      setStatsData([])
+    } finally {
+      setStatsL(false)
+    }
+  }
+
   async function handleDelete(id: number) {
     if (!confirm('Supprimer ce lien court ?')) return
     setDeleting(id)
     try {
       await smsService.deleteShortLink(id)
       setLinks(prev => prev.filter(l => l.id !== id))
+      toast.success('Lien supprimé')
     } catch {
-      alert('Erreur lors de la suppression')
+      toast.error('Erreur lors de la suppression')
     } finally {
       setDeleting(null)
     }
   }
 
   function shortUrl(link: SmsShortLink) {
-    return `${BASE_DOMAIN}/s/${link.code}`
+    return `${REDIRECT_BASE}/sms/r/${link.code}`
   }
 
-  function handleCopy(text: string) {
+  function handleCopy(text: string, id: number | 'new') {
     navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 2000)
   }
 
   return (
     <div className="min-h-full bg-white">
-      <div className="px-6 py-5">
+      <motion.div className="px-6 py-5" variants={fadeUp} initial="initial" animate="animate">
 
         {/* Header */}
         <div className="mb-5">
@@ -168,10 +201,10 @@ export default function SmsReducteurUrlPage() {
                       <span className="text-[13px] font-bold text-[#1F2937]">
                         {shortUrl(created)}
                       </span>
-                      <button onClick={() => handleCopy(shortUrl(created))}
+                      <button onClick={() => handleCopy(shortUrl(created), 'new')}
                         className="flex items-center gap-1 rounded-lg bg-[#22C55E] px-2.5 py-1 text-[10px] font-bold text-white hover:bg-[#16a34a]">
-                        {copied ? <CheckCircle2 size={11} /> : <Copy size={11} />}
-                        {copied ? 'Copié !' : 'Copier'}
+                        {copiedId === 'new' ? <CheckCircle2 size={11} /> : <Copy size={11} />}
+                        {copiedId === 'new' ? 'Copié !' : 'Copier'}
                       </button>
                     </div>
                     <p className="mt-1 text-[10px] text-gray-400">→ {created.original_url}</p>
@@ -212,19 +245,19 @@ export default function SmsReducteurUrlPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-50 bg-gray-50/60">
-                    {['Titre / URL', 'Lien court', 'Clics', 'Créé le', 'Expire le', 'Actif', 'Actions'].map(h => (
+                    {['Titre / URL', 'Lien court', 'Clics', 'Créé le', 'Expire le', 'Actif', 'Statistiques', 'Supprimer'].map(h => (
                       <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {loadingLinks && (
-                    <tr><td colSpan={7} className="py-10 text-center">
+                    <tr><td colSpan={8} className="py-10 text-center">
                       <Loader2 size={18} className="mx-auto animate-spin text-gray-300" />
                     </td></tr>
                   )}
                   {!loadingLinks && links.length === 0 && (
-                    <tr><td colSpan={7} className="py-10 text-center text-[12px] text-gray-400">
+                    <tr><td colSpan={8} className="py-10 text-center text-[12px] text-gray-400">
                       Aucun lien créé — utilisez l'onglet "+ Créer un lien"
                     </td></tr>
                   )}
@@ -237,8 +270,10 @@ export default function SmsReducteurUrlPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[12px] font-mono text-[#F4511E]">{shortUrl(l)}</span>
-                          <button onClick={() => handleCopy(shortUrl(l))} className="text-gray-300 hover:text-gray-600">
-                            <Copy size={11} />
+                          <button onClick={() => handleCopy(shortUrl(l), l.id)}
+                            className={`transition-colors ${copiedId === l.id ? 'text-[#22C55E]' : 'text-gray-300 hover:text-gray-600'}`}
+                            title={copiedId === l.id ? 'Copié !' : 'Copier le lien'}>
+                            {copiedId === l.id ? <CheckCircle2 size={11} /> : <Copy size={11} />}
                           </button>
                         </div>
                       </td>
@@ -246,9 +281,15 @@ export default function SmsReducteurUrlPage() {
                       <td className="px-4 py-3 text-[11px] text-gray-500">{new Date(l.created_at).toLocaleDateString('fr-FR')}</td>
                       <td className="px-4 py-3 text-[11px] text-gray-500">{l.expires_at ? new Date(l.expires_at).toLocaleDateString('fr-FR') : '—'}</td>
                       <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${l.active ? 'bg-[#F0FDF4] text-[#16A34A]' : 'bg-[#FEF2F2] text-[#DC2626]'}`}>
-                          {l.active ? 'Actif' : 'Inactif'}
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${isActive(l) ? 'bg-[#F0FDF4] text-[#16A34A]' : 'bg-[#FEF2F2] text-[#DC2626]'}`}>
+                          {isActive(l) ? 'Actif' : 'Inactif'}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button onClick={() => handleShowStats(l)}
+                          className="flex items-center gap-1 rounded-lg bg-[#EFF6FF] px-2.5 py-1.5 text-[10px] font-semibold text-[#3B82F6] hover:bg-blue-100 transition-colors">
+                          <BarChart2 size={11} /> Voir stats
+                        </button>
                       </td>
                       <td className="px-4 py-3">
                         <button onClick={() => handleDelete(l.id)} disabled={deleting === l.id}
@@ -264,8 +305,96 @@ export default function SmsReducteurUrlPage() {
           </div>
         )}
 
-      </div>
+      </motion.div>
       <DashboardFooter />
+
+      {/* ── Modale statistiques par lien ── */}
+      {statsLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={e => { if (e.target === e.currentTarget) setStatsLink(null) }}>
+          <div className="relative w-full max-w-[600px] rounded-2xl bg-white p-6 shadow-xl">
+            {/* Fermer */}
+            <button onClick={() => setStatsLink(null)}
+              className="absolute right-4 top-4 rounded-full p-1.5 hover:bg-gray-100">
+              <X size={16} className="text-gray-500" />
+            </button>
+
+            <div className="mb-1 flex items-center gap-2">
+              <BarChart2 size={17} className="text-[#3B82F6]" />
+              <h3 className="text-[15px] font-bold text-[#1F2937]">Statistiques du lien</h3>
+            </div>
+            <p className="mb-4 truncate text-[11px] text-gray-400">{shortUrl(statsLink)}</p>
+
+            {/* KPIs */}
+            <div className="mb-5 grid grid-cols-3 gap-3">
+              {[
+                { label: 'Clics totaux',   value: statsLoading ? '…' : statsTotal.toLocaleString('fr-FR'), color: '#3B82F6', bg: '#EFF6FF' },
+                { label: 'Jours trackés',  value: statsLoading ? '…' : String(statsData.length),           color: '#8B5CF6', bg: '#F5F3FF' },
+                { label: 'Moy. / jour',    value: statsLoading ? '…' : statsData.length ? Math.round(statsTotal / statsData.length).toString() : '0', color: '#F97316', bg: '#FFF7ED' },
+              ].map(({ label, value, color, bg }) => (
+                <div key={label} className="rounded-xl p-3 text-center" style={{ backgroundColor: bg }}>
+                  <p className="text-[18px] font-bold" style={{ color }}>{value}</p>
+                  <p className="mt-0.5 text-[10px] text-gray-500">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Chart */}
+            {statsLoading && (
+              <div className="flex h-[180px] items-center justify-center">
+                <Loader2 size={22} className="animate-spin text-gray-300" />
+              </div>
+            )}
+            {!statsLoading && statsData.length === 0 && (
+              <div className="flex h-[140px] items-center justify-center rounded-xl bg-gray-50">
+                <p className="text-[12px] text-gray-400">Aucun clic enregistré pour ce lien</p>
+              </div>
+            )}
+            {!statsLoading && statsData.length > 0 && (
+              <div className="rounded-xl bg-gray-50 p-4">
+                <p className="mb-3 text-[11px] font-semibold text-gray-500">Clics par jour (30 derniers jours)</p>
+                <ResponsiveContainer width="100%" height={160}>
+                  <BarChart data={statsData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
+                    <XAxis dataKey="date"
+                      tick={{ fontSize: 9, fill: '#9CA3AF' }}
+                      tickFormatter={d => {
+                        const parts = d.split('-')
+                        return parts.length === 3 ? `${parts[2]}/${parts[1]}` : d
+                      }}
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis tick={{ fontSize: 9, fill: '#9CA3AF' }} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E7EB' }}
+                      labelFormatter={d => {
+                        const parts = String(d).split('-')
+                        return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : d
+                      }}
+                      formatter={(val: number | string) => [val, 'Clics']}
+                    />
+                    <Bar dataKey="count" fill="#3B82F6" radius={[3, 3, 0, 0]} maxBarSize={24} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Infos lien */}
+            <div className="mt-4 rounded-xl bg-gray-50 p-3">
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div><span className="text-gray-400">URL originale : </span><span className="font-medium text-[#1F2937] break-all">{statsLink.original_url}</span></div>
+                <div><span className="text-gray-400">Créé le : </span><span className="font-medium text-[#1F2937]">{new Date(statsLink.created_at).toLocaleDateString('fr-FR')}</span></div>
+                <div><span className="text-gray-400">Expire : </span><span className="font-medium text-[#1F2937]">{statsLink.expires_at ? new Date(statsLink.expires_at).toLocaleDateString('fr-FR') : 'Permanent'}</span></div>
+                <div><span className="text-gray-400">Statut : </span>
+                  <span className={`font-semibold ${isActive(statsLink) ? 'text-[#16A34A]' : 'text-[#DC2626]'}`}>
+                    {isActive(statsLink) ? 'Actif' : 'Inactif'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

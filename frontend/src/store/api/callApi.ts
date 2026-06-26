@@ -9,7 +9,7 @@ export const callApi = createApi({
   tagTypes: ['CallSession', 'Agent', 'Queue', 'SviConfig'],
   endpoints: (builder) => ({
     getSessions: builder.query<PaginatedResponse<CallSession>, PaginationQuery>({
-      query: (params) => ({ url: '/calls/sessions', method: 'GET', params }),
+      query: (params) => ({ url: '/calls/sessions', method: 'GET', params: params as Record<string, unknown> }),
       providesTags: ['CallSession'],
     }),
 

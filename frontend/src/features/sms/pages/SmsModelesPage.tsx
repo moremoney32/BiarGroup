@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Edit2, Copy, Trash2, X, Loader2 } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
+import { useToast } from '../../../hooks/useToast'
 import type { SmsTemplate } from '../../../types/sms.types'
+import { motion } from 'framer-motion'
 
 const VARIABLES = ['{{name}}', '{{code}}', '{{date}}', '{{order_id}}', '{{prenom}}', '{{nom}}', '{{tel}}']
 
@@ -11,7 +14,7 @@ const VARIABLES = ['{{name}}', '{{code}}', '{{date}}', '{{order_id}}', '{{prenom
 interface ModalProps {
   template?: SmsTemplate | null
   onClose: () => void
-  onSaved: () => void
+  onSaved: (isEdit: boolean) => void
 }
 
 function TemplateModal({ template, onClose, onSaved }: ModalProps) {
@@ -19,8 +22,21 @@ function TemplateModal({ template, onClose, onSaved }: ModalProps) {
   const [body, setBody]       = useState(template?.body ?? '')
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
+  const textareaRef           = useRef<HTMLTextAreaElement>(null)
 
-  const insertVar = (v: string) => setBody(m => m + v)
+  function insertVar(v: string) {
+    const el = textareaRef.current
+    if (!el) { setBody(m => m + v); return }
+    const start = el.selectionStart ?? body.length
+    const end   = el.selectionEnd   ?? body.length
+    const next  = body.slice(0, start) + v + body.slice(end)
+    setBody(next)
+    // Repositionner le curseur après la variable insérée
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(start + v.length, start + v.length)
+    })
+  }
 
   async function handleSave() {
     if (!name.trim() || !body.trim()) { setError('Nom et message requis'); return }
@@ -31,7 +47,7 @@ function TemplateModal({ template, onClose, onSaved }: ModalProps) {
       } else {
         await smsService.createTemplate({ name: name.trim(), body: body.trim() })
       }
-      onSaved()
+      onSaved(!!template)
     } catch {
       setError('Erreur lors de la sauvegarde')
     } finally {
@@ -72,7 +88,7 @@ function TemplateModal({ template, onClose, onSaved }: ModalProps) {
 
           <div>
             <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">Message</label>
-            <textarea value={body} onChange={e => setBody(e.target.value)} rows={4}
+            <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={4}
               placeholder="Composez votre message SMS..."
               className="w-full resize-none rounded-xl bg-[#FFEEE6] px-4 py-3 text-[13px] text-[#1F2937] outline-none ring-1 ring-orange-200 focus:ring-2 focus:ring-[#F4511E]/40"
             />
@@ -108,7 +124,14 @@ function TemplateModal({ template, onClose, onSaved }: ModalProps) {
 
 // ── Page principale ───────────────────────────────────────────
 
+const fadeUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+}
+
 export default function SmsModelesPage() {
+  const navigate = useNavigate()
+  const toast    = useToast()
   const [templates, setTemplates] = useState<SmsTemplate[]>([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
@@ -137,7 +160,7 @@ export default function SmsModelesPage() {
       await smsService.deleteTemplate(id)
       setTemplates(prev => prev.filter(t => t.id !== id))
     } catch {
-      alert('Erreur lors de la suppression')
+      toast.error('Erreur lors de la suppression')
     } finally {
       setDeleting(null)
     }
@@ -147,8 +170,9 @@ export default function SmsModelesPage() {
     try {
       const created = await smsService.createTemplate({ name: `${t.name} (copie)`, body: t.body })
       setTemplates(prev => [...prev, created])
+      toast.success('Template dupliqué')
     } catch {
-      alert('Erreur lors de la copie')
+      toast.error('Erreur lors de la copie')
     }
   }
 
@@ -159,7 +183,7 @@ export default function SmsModelesPage() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="px-4 sm:px-6 py-5">
+      <motion.div className="px-4 sm:px-6 py-5" variants={fadeUp} initial="initial" animate="animate">
 
         {/* Header */}
         <div className="mb-6 flex items-start justify-between">
@@ -239,7 +263,9 @@ export default function SmsModelesPage() {
                 {/* Footer */}
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-gray-400">{t.body.length} car. · ~{Math.ceil(t.body.length / 160)} segment(s)</span>
-                  <button className="rounded-xl bg-[#F4511E] px-4 py-1.5 text-[12px] font-bold text-white hover:bg-[#d9400f] transition-colors">
+                  <button
+                    onClick={() => navigate('/app/sms/masse', { state: { templateBody: t.body } })}
+                    className="rounded-xl bg-[#F4511E] px-4 py-1.5 text-[12px] font-bold text-white hover:bg-[#d9400f] transition-colors">
                     Utiliser
                   </button>
                 </div>
@@ -248,13 +274,18 @@ export default function SmsModelesPage() {
           </div>
         )}
 
-      </div>
+      </motion.div>
 
       {showModal && (
         <TemplateModal
           template={editing}
           onClose={() => { setModal(false); setEditing(null) }}
-          onSaved={() => { setModal(false); setEditing(null); fetchTemplates() }}
+          onSaved={(isEdit) => {
+            setModal(false)
+            setEditing(null)
+            fetchTemplates()
+            toast.success(isEdit ? 'Template mis à jour' : 'Template créé')
+          }}
         />
       )}
 

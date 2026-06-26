@@ -9,7 +9,7 @@ export const contactApi = createApi({
   tagTypes: ['Contact', 'ContactList'],
   endpoints: (builder) => ({
     getContacts: builder.query<PaginatedResponse<Contact>, PaginationQuery>({
-      query: (params) => ({ url: '/contacts', method: 'GET', params }),
+      query: (params) => ({ url: '/contacts', method: 'GET', params: params as Record<string, unknown> }),
       providesTags: ['Contact'],
     }),
 

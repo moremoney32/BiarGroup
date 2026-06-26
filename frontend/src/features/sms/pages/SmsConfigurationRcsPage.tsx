@@ -1,7 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Settings, ChevronLeft, Eye, EyeOff, Copy, CheckCircle2, Upload } from 'lucide-react'
+import { Settings, ChevronLeft, Eye, EyeOff, Copy, CheckCircle2, Upload, ShieldCheck, Radio } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
+import { motion } from 'framer-motion'
+
+const fadeUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+}
 
 export default function SmsConfigurationRcsPage() {
   const navigate = useNavigate()
@@ -26,7 +32,7 @@ export default function SmsConfigurationRcsPage() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="px-4 sm:px-6 py-5">
+      <motion.div className="px-4 sm:px-6 py-5" variants={fadeUp} initial="initial" animate="animate">
 
         {/* Header */}
         <div className="mb-5 flex flex-wrap items-center gap-3 justify-between">
@@ -56,13 +62,16 @@ export default function SmsConfigurationRcsPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
-              { label: 'Vérification d\'identité', value: 'Validée',  color: '#16A34A' },
-              { label: 'Conformité',                value: 'Conforme', color: '#16A34A' },
-              { label: 'Statut du service',          value: 'Actif',    color: '#16A34A' },
-            ].map(({ label, value, color }) => (
-              <div key={label}>
-                <p className="text-[11px] text-gray-500">{label}</p>
-                <p className="text-[12px] font-bold" style={{ color }}>{value}</p>
+              { icon: CheckCircle2, label: "Vérification d'identité", value: 'Validée',  color: '#16A34A' },
+              { icon: ShieldCheck,  label: 'Conformité',               value: 'Conforme', color: '#16A34A' },
+              { icon: Radio,        label: 'Statut du service',         value: 'Actif',    color: '#16A34A' },
+            ].map(({ icon: Icon, label, value, color }) => (
+              <div key={label} className="flex items-center gap-2">
+                <Icon size={14} style={{ color }} className="shrink-0" />
+                <div>
+                  <p className="text-[11px] text-gray-500">{label}</p>
+                  <p className="text-[12px] font-bold" style={{ color }}>{value}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -195,6 +204,15 @@ export default function SmsConfigurationRcsPage() {
             <div className="col-span-2">
               <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">Logo de Marque (URL) *</label>
               <div className="flex items-center gap-2">
+                {brandLogo ? (
+                  <img src={brandLogo} alt="logo" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    className="h-10 w-10 shrink-0 rounded-lg border border-gray-200 object-cover"
+                  />
+                ) : (
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50">
+                    <Upload size={14} className="text-gray-400" />
+                  </div>
+                )}
                 <input value={brandLogo} onChange={e => setBLogo(e.target.value)}
                   placeholder="https://images.unsplash.com/photo-..."
                   className="flex-1 rounded-xl bg-[#FFEEE6] px-4 py-2.5 text-[12px] text-[#1F2937] outline-none ring-1 ring-orange-200 placeholder-orange-300"
@@ -203,7 +221,7 @@ export default function SmsConfigurationRcsPage() {
                   <Upload size={13} /> Upload
                 </button>
               </div>
-              <p className="mt-1 text-[10px] text-gray-400">Format recommandé: PNG/JPG 512x512px, maximum 100KB</p>
+              <p className="mt-1 text-[10px] text-gray-400">Format recommandé : PNG/JPG 512x512px, maximum 100KB</p>
             </div>
 
             <div className="col-span-2">
@@ -214,23 +232,19 @@ export default function SmsConfigurationRcsPage() {
               <p className="mt-1 text-right text-[10px] text-gray-400">{brandDesc.length}/200 caractères</p>
             </div>
 
-            {[
-              { label: 'Site Web', value: brandSite, onChange: setBSite, icon: '🌐', placeholder: 'https://biargroup.com' },
-              { label: 'Téléphone', value: brandTel, onChange: setBTel, icon: '📞', placeholder: '+243 978 979 898' },
-            ].map(({ label, value, onChange, icon, placeholder }) => (
-              <div key={label}>
-                <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">{icon} {label}</label>
-                <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-                  className="w-full rounded-xl bg-[#FFEEE6] px-4 py-2.5 text-[12px] text-[#1F2937] outline-none ring-1 ring-orange-200 placeholder-orange-300"
-                />
-              </div>
-            ))}
-
-            <div className="col-span-2">
-              <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">✉ Email</label>
-              <input value={brandEmail} onChange={e => setBEmail(e.target.value)}
-                className="w-full rounded-xl bg-[#FFEEE6] px-4 py-2.5 text-[12px] text-[#1F2937] outline-none ring-1 ring-orange-200"
-              />
+            <div className="col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                { label: 'Site Web',   value: brandSite,  onChange: setBSite,  icon: '🌐', placeholder: 'https://biargroup.com' },
+                { label: 'Téléphone', value: brandTel,   onChange: setBTel,   icon: '📞', placeholder: '+243 978 979 898' },
+                { label: 'Email',      value: brandEmail, onChange: setBEmail, icon: '✉',  placeholder: 'contact@biargroup.com' },
+              ].map(({ label, value, onChange, icon, placeholder }) => (
+                <div key={label}>
+                  <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">{icon} {label}</label>
+                  <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+                    className="w-full rounded-xl bg-[#FFEEE6] px-4 py-2.5 text-[12px] text-[#1F2937] outline-none ring-1 ring-orange-200 placeholder-orange-300"
+                  />
+                </div>
+              ))}
             </div>
           </div>
 
@@ -264,7 +278,7 @@ export default function SmsConfigurationRcsPage() {
           </div>
         </div>
 
-      </div>
+      </motion.div>
       <DashboardFooter />
     </div>
   )

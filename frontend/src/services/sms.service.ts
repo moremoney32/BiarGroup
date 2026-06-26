@@ -2,7 +2,7 @@ import api from './api'
 import type {
   SmsCampaign, SmsMessage, SmsTemplate, SmsSenderId,
   SmsScheduled, SmsContactList, SmsListContact, SmsShortLink,
-  SmsAnalyticsOverview, CrmContact,
+  SmsAnalyticsOverview, CrmContact, SmsApiKey,
   CreateCampaignPayload, UpdateCampaignPayload,
   CreateScheduledPayload, AddContactPayload, AddContactsResult,
 } from '../types/sms.types'
@@ -31,7 +31,7 @@ export const smsService = {
   // ── Campagnes ────────────────────────────────────────────────
 
   async getCampaigns(params?: {
-    page?: number; limit?: number; status?: string
+    page?: number; limit?: number; status?: string; campaignType?: string; from?: string; to?: string
   }): Promise<{ campaigns: SmsCampaign[]; meta: PaginationMeta }> {
     const url = `/sms/campaigns${qs(params ?? {})}`
     const res = await api.get<PagedResp<SmsCampaign[]>>(url)
@@ -64,7 +64,7 @@ export const smsService = {
   // ── Messages ─────────────────────────────────────────────────
 
   async getMessages(params?: {
-    page?: number; limit?: number; campaignId?: number; status?: string
+    page?: number; limit?: number; campaignId?: number; singleOnly?: boolean; status?: string
   }): Promise<{ messages: SmsMessage[]; meta: PaginationMeta }> {
     const url = `/sms/messages${qs(params ?? {})}`
     const res = await api.get<PagedResp<SmsMessage[]>>(url)
@@ -169,7 +169,7 @@ export const smsService = {
   },
 
   async getContactsInList(listId: number, params?: {
-    page?: number; limit?: number
+    page?: number; limit?: number; search?: string; optedOut?: boolean
   }): Promise<{ contacts: SmsListContact[]; meta: PaginationMeta }> {
     const url = `/sms/contact-lists/${listId}/contacts${qs(params ?? {})}`
     const res = await api.get<PagedResp<SmsListContact[]>>(url)
@@ -202,6 +202,17 @@ export const smsService = {
     return res.data
   },
 
+  async importContactsCsv(listId: number, file: File): Promise<{ added: number; invalid: string[]; skipped: number }> {
+    const form = new FormData()
+    form.append('file', file)
+    // apiFetch détecte FormData et omet Content-Type (le navigateur ajoute le boundary)
+    const res = await api.post<ApiResp<{ added: number; invalid: string[]; skipped: number }>>(
+      `/sms/contact-lists/${listId}/import-csv`,
+      form
+    )
+    return res.data
+  },
+
   // ── Réducteur d'URL ───────────────────────────────────────────
 
   async getShortLinks(): Promise<SmsShortLink[]> {
@@ -230,5 +241,21 @@ export const smsService = {
   async getAnalyticsOverview(): Promise<SmsAnalyticsOverview> {
     const res = await api.get<ApiResp<SmsAnalyticsOverview>>('/sms/analytics/overview')
     return res.data
+  },
+
+  // ── Clés API ─────────────────────────────────────────────────
+
+  async getApiKeys(): Promise<SmsApiKey[]> {
+    const res = await api.get<ApiResp<SmsApiKey[]>>('/sms/api-keys')
+    return res.data
+  },
+
+  async createApiKey(data: { name: string; module?: string }): Promise<SmsApiKey> {
+    const res = await api.post<ApiResp<SmsApiKey>>('/sms/api-keys', data)
+    return res.data
+  },
+
+  async deleteApiKey(id: number): Promise<void> {
+    await api.delete<ApiResp<null>>(`/sms/api-keys/${id}`)
   },
 }

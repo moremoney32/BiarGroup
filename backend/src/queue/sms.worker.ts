@@ -1,6 +1,6 @@
 import Bull from 'bull'
 import { pool } from '../db/config'
-import { africastalkingService } from '../services/africastalking.service'
+import { infobipService } from '../services/infobip.service'
 
 const redisConfig = {
   host:     process.env.REDIS_HOST     ?? 'localhost',
@@ -29,32 +29,29 @@ export const smsQueue = new Bull<SmsJob>('sms-send', {
   },
 })
 
-// 5 jobs en parallèle — bon équilibre débit / stabilité AT API
+// 5 jobs en parallèle — bon équilibre débit / stabilité Infobip API
 smsQueue.process(5, async (job) => {
   const { messageId, phone, senderId, body, campaignId } = job.data
 
   try {
-    const recipients = await africastalkingService.sendSms({
-      to:   phone,
+    const results = await infobipService.sendSms({
+      to:      phone,
       message: body,
-      from: senderId,
+      from:    senderId || undefined,
     })
 
-    const recipient = recipients[0]
+    const msg = results[0]
+    if (!msg) throw new Error('Aucune réponse Infobip pour ce numéro')
 
-    if (!recipient) throw new Error('Aucune réponse AT pour ce numéro')
+    // PENDING / SENT = accepté par Infobip — livraison confirmée par DLR webhook
+    const accepted = ['PENDING', 'SENT'].includes(msg.status.groupName)
 
-    // Codes AT indiquant que le message est parti (sent) :
-    //   100 = Processed, 101 = Sent, 102 = Queued
-    const atAccepted = [100, 101, 102].includes(recipient.statusCode)
-
-    if (atAccepted) {
-      // SENT = AT a accepté — PAS encore livré (livraison confirmée par DLR)
+    if (accepted) {
       await pool.execute(
         `UPDATE sms_messages
-         SET status = 'sent', at_message_id = ?, at_status_code = ?, sent_at = NOW(), updated_at = NOW()
+         SET status = 'sent', at_message_id = ?, sent_at = NOW(), updated_at = NOW()
          WHERE id = ?`,
-        [recipient.messageId, recipient.statusCode, messageId]
+        [msg.messageId, messageId]
       )
 
       if (campaignId) {
@@ -62,7 +59,7 @@ smsQueue.process(5, async (job) => {
           'UPDATE sms_campaigns SET total_sent = total_sent + 1, updated_at = NOW() WHERE id = ?',
           [campaignId]
         )
-        // Vérifier si la campagne est terminée (atomic — évite race condition)
+        // Vérifier si la campagne est terminée (atomic)
         await pool.execute(
           `UPDATE sms_campaigns SET status = 'sent', sent_at = NOW()
            WHERE id = ? AND status = 'sending'
@@ -71,12 +68,12 @@ smsQueue.process(5, async (job) => {
         )
       }
     } else {
-      // AT a rejeté (numéro invalide, solde insuffisant, sender ID non enregistré…)
+      // Infobip a rejeté le message (numéro invalide, sender non autorisé, etc.)
       await pool.execute(
         `UPDATE sms_messages
-         SET status = 'failed', at_status_code = ?, failure_reason = ?, updated_at = NOW()
+         SET status = 'failed', failure_reason = ?, updated_at = NOW()
          WHERE id = ?`,
-        [recipient.statusCode, recipient.status, messageId]
+        [msg.status.description, messageId]
       )
 
       if (campaignId) {
@@ -95,7 +92,6 @@ smsQueue.process(5, async (job) => {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Erreur inconnue'
 
-    // Mettre à jour le message à chaque tentative — Bull retentera
     await pool.execute(
       `UPDATE sms_messages SET failure_reason = ?, updated_at = NOW() WHERE id = ?`,
       [msg, messageId]
@@ -130,7 +126,6 @@ smsQueue.on('failed', async (job, err) => {
         'UPDATE sms_campaigns SET total_failed = total_failed + 1, updated_at = NOW() WHERE id = ?',
         [campaignId]
       ),
-      // Vérifier si la campagne est terminée malgré les échecs
       pool.execute(
         `UPDATE sms_campaigns SET status = 'sent', sent_at = NOW()
          WHERE id = ? AND status = 'sending'

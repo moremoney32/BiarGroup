@@ -13,6 +13,7 @@
     "test:coverage": "jest --coverage",
     "migrate": "cross-env DOTENV_CONFIG_PATH=.env.local ts-node -r dotenv/config src/db/migrations/run-migrations.ts",
     "seed": "ts-node src/db/seeds/run.ts",
+    "seed:admin": "cross-env DOTENV_CONFIG_PATH=.env.local ts-node -r dotenv/config src/db/seeds/create-super-admin.ts",
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit"
   },

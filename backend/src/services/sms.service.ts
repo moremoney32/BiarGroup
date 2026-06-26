@@ -7,6 +7,7 @@ import type { ResultSetHeader, RowDataPacket } from 'mysql2'
 import type {
   SmsCampaign, SmsMessage, SmsTemplate, SmsSenderId,
   SmsScheduled, SmsContactList, SmsListContact, SmsShortLink,
+  SmsApiKey,
 } from '../types/sms.types'
 
 // Mailer système (pour les notifications internes — utilise le SMTP par défaut)
@@ -73,13 +74,13 @@ async function sendSenderIdNotification(params: {
           Ce Sender ID apparaîtra sur le téléphone du destinataire à la place du numéro.
           Vérifiez qu'il ne s'agit pas d'une usurpation de marque.
         </p>
-        <div style="display:flex;gap:12px">
+        <div style="display:flex;gap:24px;margin-top:4px">
           <a href="${approveUrl}"
-            style="flex:1;display:block;background:#16A34A;color:#fff;text-align:center;padding:12px;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">
+            style="flex:1;display:block;background:#16A34A;color:#fff;text-align:center;padding:14px 12px;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">
             ✅ Approuver
           </a>
           <a href="${rejectUrl}"
-            style="flex:1;display:block;background:#DC2626;color:#fff;text-align:center;padding:12px;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">
+            style="flex:1;display:block;background:#DC2626;color:#fff;text-align:center;padding:14px 12px;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">
             ❌ Rejeter
           </a>
         </div>
@@ -137,7 +138,7 @@ export const smsService = {
 
   async getCampaigns(
     tenantId: number,
-    opts: { page?: number; limit?: number; status?: string } = {}
+    opts: { page?: number; limit?: number; status?: string; campaignType?: string; from?: string; to?: string } = {}
   ): Promise<{ campaigns: SmsCampaign[]; total: number }> {
     const page  = Math.max(1, opts.page  ?? 1)
     const limit = Math.min(100, opts.limit ?? 20)
@@ -146,10 +147,10 @@ export const smsService = {
     let where = 'WHERE tenant_id = ? AND deleted_at IS NULL'
     const params: (string | number | null)[] = [tenantId]
 
-    if (opts.status) {
-      where += ' AND status = ?'
-      params.push(opts.status)
-    }
+    if (opts.status)       { where += ' AND status = ?';               params.push(opts.status) }
+    if (opts.campaignType) { where += ' AND campaign_type = ?';        params.push(opts.campaignType) }
+    if (opts.from)         { where += ' AND created_at >= ?';          params.push(opts.from) }
+    if (opts.to)           { where += ' AND created_at <= ?';          params.push(opts.to) }
 
     // pool.query (text protocol) évite le bug mysql2 avec LIMIT/OFFSET en prepared statements
     const [rows] = await pool.query<RowDataPacket[]>(
@@ -173,21 +174,21 @@ export const smsService = {
   },
 
   async createCampaign(
-    data: { name: string; message: string; senderId: string; listIds: number[]; scheduledAt?: string },
+    data: { name: string; message: string; senderId: string; listIds: number[]; scheduledAt?: string; campaignType?: string },
     tenantId: number,
     userId: number
   ): Promise<SmsCampaign> {
-    if (!SENDER_ID_RE.test(data.senderId)) {
-      throw new Error('Sender ID invalide — 1 à 11 caractères alphanumériques uniquement')
-    }
-
-    // Vérifier que le sender ID est approuvé pour ce tenant
-    const [senderRows] = await pool.execute<RowDataPacket[]>(
-      "SELECT id FROM sms_sender_ids WHERE tenant_id = ? AND sender_id = ? AND status = 'approved'",
-      [tenantId, data.senderId]
-    )
-    if (senderRows.length === 0) {
-      throw new Error(`Sender ID "${data.senderId}" non approuvé pour ce compte`)
+    if (data.senderId) {
+      if (!SENDER_ID_RE.test(data.senderId)) {
+        throw new Error('Sender ID invalide — 1 à 11 caractères alphanumériques uniquement')
+      }
+      const [senderRows] = await pool.execute<RowDataPacket[]>(
+        "SELECT id FROM sms_sender_ids WHERE tenant_id = ? AND sender_id = ? AND status = 'approved'",
+        [tenantId, data.senderId]
+      )
+      if (senderRows.length === 0) {
+        throw new Error(`Sender ID "${data.senderId}" non approuvé pour ce compte`)
+      }
     }
 
     const scheduledAt = data.scheduledAt ?? null
@@ -197,9 +198,10 @@ export const smsService = {
       await conn.beginTransaction()
 
       const [result] = await conn.execute<ResultSetHeader>(
-        `INSERT INTO sms_campaigns (tenant_id, created_by, name, message, sender_id, status, scheduled_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sms_campaigns (tenant_id, created_by, name, message, sender_id, campaign_type, status, scheduled_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [tenantId, userId, data.name, data.message, data.senderId,
+          data.campaignType ?? 'promotional',
           scheduledAt ? 'scheduled' : 'draft', scheduledAt]
       )
       const campaignId = result.insertId
@@ -305,11 +307,19 @@ export const smsService = {
    * 4. Met à jour la campagne status=sending
    */
   async sendCampaign(campaignId: number, tenantId: number): Promise<{ queued: number }> {
-    const campaign = await smsService.getCampaignById(campaignId, tenantId)
-    if (!campaign) throw new Error('Campagne introuvable')
-    if (campaign.status !== 'draft' && campaign.status !== 'scheduled') {
+    // UPDATE atomique — empêche le double envoi si deux requêtes arrivent simultanément
+    const [lockResult] = await pool.execute<ResultSetHeader>(
+      "UPDATE sms_campaigns SET status = 'sending', updated_at = NOW() WHERE id = ? AND tenant_id = ? AND status IN ('draft', 'scheduled')",
+      [campaignId, tenantId]
+    )
+    if (lockResult.affectedRows === 0) {
+      const existing = await smsService.getCampaignById(campaignId, tenantId)
+      if (!existing) throw new Error('Campagne introuvable')
       throw new Error('Cette campagne ne peut pas être envoyée dans son état actuel')
     }
+
+    const campaign = await smsService.getCampaignById(campaignId, tenantId)
+    if (!campaign) throw new Error('Campagne introuvable')
 
     // Charger les listes liées
     const [listRows] = await pool.execute<RowDataPacket[]>(
@@ -329,11 +339,11 @@ export const smsService = {
       let offset = 0
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        const [rows] = await pool.execute<RowDataPacket[]>(
+        const [rows] = await pool.query<RowDataPacket[]>(
           `SELECT phone FROM sms_list_contacts
            WHERE list_id = ? AND opted_out = 0
-           LIMIT ? OFFSET ?`,
-          [listId, BATCH, offset]
+           LIMIT ${BATCH} OFFSET ${offset}`,
+          [listId]
         )
         if ((rows as RowDataPacket[]).length === 0) break
         for (const row of rows) {
@@ -349,25 +359,27 @@ export const smsService = {
 
     if (contacts.length === 0) throw new Error('Aucun contact valide dans les listes sélectionnées')
 
-    // Marquer la campagne sending + MAJ total_recipients
+    // MAJ total_recipients (status déjà positionné à 'sending' par le lock atomique)
     await pool.execute(
-      "UPDATE sms_campaigns SET status = 'sending', total_recipients = ?, updated_at = NOW() WHERE id = ?",
-      [contacts.length, campaignId]
+      'UPDATE sms_campaigns SET total_recipients = ?, updated_at = NOW() WHERE id = ? AND tenant_id = ?',
+      [contacts.length, campaignId, tenantId]
     )
 
     // Insérer les sms_messages en batch de 500 puis enqueue
     const { smsQueue } = await import('../queue/sms.worker')
     const segments = countSegments(campaign.message)
+    // sender_id vient en snake_case depuis MySQL — le cast SmsCampaign ne transforme pas les clés
+    const rawCampaign = campaign as unknown as Record<string, unknown>
+    const senderIdVal = (rawCampaign.sender_id ?? rawCampaign.senderId ?? '') as string
     let totalQueued = 0
 
     for (let i = 0; i < contacts.length; i += BATCH) {
       const chunk = contacts.slice(i, i + BATCH)
 
-      // INSERT batch
       const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ')
       const vals = chunk.flatMap(c => [
         tenantId, campaignId, c.phone,
-        campaign.senderId, campaign.message,
+        senderIdVal, campaign.message,
         'queued', segments,
       ])
       await pool.execute(
@@ -377,12 +389,12 @@ export const smsService = {
         vals
       )
 
-      // Récupérer les IDs des messages insérés
-      const [msgRows] = await pool.execute<RowDataPacket[]>(
+      // Récupérer les IDs des messages insérés — pool.query évite le bug mysql2 avec LIMIT en bind param
+      const [msgRows] = await pool.query<RowDataPacket[]>(
         `SELECT id, phone FROM sms_messages
          WHERE campaign_id = ? AND status = 'queued'
-         ORDER BY id DESC LIMIT ?`,
-        [campaignId, chunk.length]
+         ORDER BY id DESC LIMIT ${chunk.length}`,
+        [campaignId]
       )
 
       // Enqueue chaque message dans Bull
@@ -390,7 +402,7 @@ export const smsService = {
         data: {
           messageId:  row.id as number,
           phone:      row.phone as string,
-          senderId:   campaign.senderId,
+          senderId:   senderIdVal,
           body:       campaign.message,
           tenantId,
           campaignId,
@@ -407,7 +419,7 @@ export const smsService = {
 
   async getMessages(
     tenantId: number,
-    opts: { campaignId?: number; page?: number; limit?: number; status?: string } = {}
+    opts: { campaignId?: number; singleOnly?: boolean; page?: number; limit?: number; status?: string } = {}
   ): Promise<{ messages: SmsMessage[]; total: number }> {
     const page   = Math.max(1, opts.page  ?? 1)
     const limit  = Math.min(100, opts.limit ?? 20)
@@ -416,14 +428,15 @@ export const smsService = {
     let where = 'WHERE tenant_id = ?'
     const params: (string | number | null)[] = [tenantId]
 
-    if (opts.campaignId) { where += ' AND campaign_id = ?'; params.push(opts.campaignId) }
-    if (opts.status)     { where += ' AND status = ?';      params.push(opts.status) }
+    if (opts.singleOnly)  { where += ' AND campaign_id IS NULL' }
+    else if (opts.campaignId) { where += ' AND campaign_id = ?'; params.push(opts.campaignId) }
+    if (opts.status)      { where += ' AND status = ?'; params.push(opts.status) }
 
-    const [rows] = await pool.execute<RowDataPacket[]>(
-      `SELECT * FROM sms_messages ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT * FROM sms_messages ${where} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+      params
     )
-    const [[{ total }]] = await pool.execute<RowDataPacket[]>(
+    const [[{ total }]] = await pool.query<RowDataPacket[]>(
       `SELECT COUNT(*) as total FROM sms_messages ${where}`, params
     )
 
@@ -431,32 +444,32 @@ export const smsService = {
   },
 
   /**
-   * Traite un DLR reçu d'AfricasTalking
-   * Distinction 'sent' vs 'delivered' vs 'undelivered' — ne jamais confondre
+   * Traite un DLR reçu d'Infobip
+   * statusGroupName : 'DELIVERED' | 'PENDING' | 'SENT' | 'UNDELIVERABLE' | 'EXPIRED' | 'REJECTED'
    */
   async handleDlr(
-    atMessageId: string,
-    atStatus: string,
+    infobipMessageId: string,
+    statusGroupName: string,
     failureReason?: string
   ): Promise<void> {
-    // Trouver le message par son ID AfricasTalking
+    // Trouver le message par son ID Infobip (stocké dans at_message_id)
     const [rows] = await pool.execute<RowDataPacket[]>(
       "SELECT id, campaign_id, tenant_id, status FROM sms_messages WHERE at_message_id = ?",
-      [atMessageId]
+      [infobipMessageId]
     )
     if (rows.length === 0) return // DLR pour un message inconnu → ignorer
 
     const msg = rows[0]
 
-    // Ne traiter que les messages en statut 'sent' (éviter double traitement)
+    // Ne traiter que les messages en statut 'sent'
     if (msg.status !== 'sent') return
 
-    if (atStatus === 'Buffered') return // encore en transit — pas de changement
+    // PENDING / SENT = encore en transit — pas de changement
+    if (statusGroupName === 'PENDING' || statusGroupName === 'SENT') return
 
-    const isDelivered = atStatus === 'Success'
+    const isDelivered = statusGroupName === 'DELIVERED'
     const newStatus   = isDelivered ? 'delivered' : 'undelivered'
 
-    // MAJ message — deux requêtes séparées pour éviter SQL dynamique
     if (isDelivered) {
       await pool.execute(
         `UPDATE sms_messages
@@ -469,13 +482,12 @@ export const smsService = {
         `UPDATE sms_messages
          SET status = 'undelivered', failure_reason = ?, updated_at = NOW()
          WHERE id = ?`,
-        [failureReason ?? atStatus, msg.id]
+        [failureReason ?? statusGroupName, msg.id]
       )
     }
 
     if (!msg.campaign_id) return
 
-    // MAJ compteurs campagne (atomique)
     if (newStatus === 'delivered') {
       await pool.execute(
         'UPDATE sms_campaigns SET total_delivered = total_delivered + 1, updated_at = NOW() WHERE id = ?',
@@ -704,9 +716,9 @@ export const smsService = {
       [tenantId, phone, hash, expires]
     )
 
-    // Envoyer via AfricasTalking
-    const { africastalkingService } = await import('./africastalking.service')
-    await africastalkingService.sendSms({
+    // Envoyer via Infobip
+    const { infobipService } = await import('./infobip.service')
+    await infobipService.sendSms({
       to: phone,
       message: `Votre code de vérification est : ${code}. Valide 5 minutes.`,
       from: senderId,
@@ -755,11 +767,11 @@ export const smsService = {
     const params: (string | number | null)[] = [tenantId]
     if (opts.status) { where += ' AND status = ?'; params.push(opts.status) }
 
-    const [rows] = await pool.execute<RowDataPacket[]>(
-      `SELECT * FROM sms_scheduled ${where} ORDER BY scheduled_at ASC LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT * FROM sms_scheduled ${where} ORDER BY scheduled_at ASC LIMIT ${limit} OFFSET ${offset}`,
+      params
     )
-    const [[{ total }]] = await pool.execute<RowDataPacket[]>(
+    const [[{ total }]] = await pool.query<RowDataPacket[]>(
       `SELECT COUNT(*) as total FROM sms_scheduled ${where}`, params
     )
     return { items: rows as SmsScheduled[], total: Number(total) }
@@ -1011,7 +1023,7 @@ export const smsService = {
   async getContactsInList(
     listId: number,
     tenantId: number,
-    opts: { page?: number; limit?: number } = {}
+    opts: { page?: number; limit?: number; search?: string; optedOut?: boolean } = {}
   ): Promise<{ contacts: SmsListContact[]; total: number }> {
     // Vérifier appartenance tenant
     const [listRows] = await pool.execute<RowDataPacket[]>(
@@ -1024,14 +1036,29 @@ export const smsService = {
     const limit  = Math.min(500, opts.limit ?? 50)
     const offset = (page - 1) * limit
 
-    const [rows] = await pool.execute<RowDataPacket[]>(
-      'SELECT * FROM sms_list_contacts WHERE list_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
-      [listId, limit, offset]
+    let where = 'WHERE list_id = ?'
+    const params: (string | number)[] = [listId]
+
+    if (opts.search?.trim()) {
+      where += ' AND (phone LIKE ? OR first_name LIKE ? OR last_name LIKE ?)'
+      const like = `%${opts.search.trim()}%`
+      params.push(like, like, like)
+    }
+    if (opts.optedOut !== undefined) {
+      where += ' AND opted_out = ?'
+      params.push(opts.optedOut ? 1 : 0)
+    }
+
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT * FROM sms_list_contacts ${where} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+      params
     )
     const [[{ total }]] = await pool.execute<RowDataPacket[]>(
-      'SELECT COUNT(*) as total FROM sms_list_contacts WHERE list_id = ?', [listId]
+      `SELECT COUNT(*) as total FROM sms_list_contacts ${where}`, params
     )
-    return { contacts: rows as SmsListContact[], total: Number(total) }
+    // Normalise opted_out : MySQL retourne TINYINT (0/1), le type attend boolean
+    const contacts = (rows as RowDataPacket[]).map(r => ({ ...r, opted_out: !!r.opted_out })) as unknown as SmsListContact[]
+    return { contacts, total: Number(total) }
   },
 
   // Opt-out d'un contact (réponse STOP reçue via SMPP MO ou déclaration manuelle)
@@ -1119,6 +1146,43 @@ export const smsService = {
     }
 
     return { added, skipped }
+  },
+
+  async importContactsCsv(
+    listId: number,
+    csvContent: string,
+    tenantId: number
+  ): Promise<{ added: number; invalid: string[]; skipped: number }> {
+    const [listRows] = await pool.execute<RowDataPacket[]>(
+      'SELECT id FROM sms_contact_lists WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
+      [listId, tenantId]
+    )
+    if (listRows.length === 0) throw new Error('Liste introuvable')
+
+    // Parse CSV simple — séparateur virgule ou point-virgule
+    const lines = csvContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+    const contacts: Array<{ phone: string; firstName?: string; lastName?: string }> = []
+
+    for (const raw of lines) {
+      const line = raw.trim()
+      if (!line) continue
+      // Split sur , ou ; en tenant compte des guillemets basiques
+      const cols = line.split(/[,;]/).map(c => c.replace(/^["']|["']$/g, '').trim())
+      const phone = cols[0] ?? ''
+      if (!phone || phone.toLowerCase().startsWith('phone') || phone.toLowerCase().startsWith('tel')) {
+        continue // Ligne d'en-tête ou vide
+      }
+      contacts.push({
+        phone,
+        firstName: cols[1] || undefined,
+        lastName:  cols[2] || undefined,
+      })
+    }
+
+    if (contacts.length === 0) return { added: 0, invalid: [], skipped: 0 }
+
+    const result = await this.addContactsToList(listId, contacts, tenantId, 'CD')
+    return { added: result.added, invalid: result.invalid, skipped: result.invalid.length }
   },
 
   async optOutContact(phone: string, tenantId: number): Promise<void> {
@@ -1219,7 +1283,7 @@ export const smsService = {
   async getShortLinkStats(
     id: number,
     tenantId: number
-  ): Promise<{ link: SmsShortLink; clicksByDay: Array<{ date: string; count: number }> }> {
+  ): Promise<{ total_clicks: number; clicks_by_day: Array<{ date: string; count: number }> }> {
     const [rows] = await pool.execute<RowDataPacket[]>(
       'SELECT * FROM sms_short_links WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
       [id, tenantId]
@@ -1233,9 +1297,10 @@ export const smsService = {
       [id]
     )
 
+    const link = rows[0] as SmsShortLink
     return {
-      link: rows[0] as SmsShortLink,
-      clicksByDay: clickRows.map(r => ({ date: r.date as string, count: Number(r.count) })),
+      total_clicks: Number(link.clicks),
+      clicks_by_day: clickRows.map(r => ({ date: r.date as string, count: Number(r.count) })),
     }
   },
 
@@ -1266,7 +1331,8 @@ export const smsService = {
       }
     }
 
-    const normalized = normalizePhone(phone) ?? phone.trim()
+    const normalized = normalizePhone(phone)
+    if (!normalized) throw new Error('Numéro de téléphone invalide — vérifiez le format E.164 (+243...)')
     const segments = countSegments(message)
 
     const [result] = await pool.execute<ResultSetHeader>(
@@ -1276,48 +1342,45 @@ export const smsService = {
     )
     const messageId = result.insertId
 
-    const { africastalkingService } = await import('./africastalking.service')
-    let atMessageId = ''
-    let atStatus: 'sent' | 'failed' = 'failed'
+    const { infobipService } = await import('./infobip.service')
+    let providerMessageId = ''
+    let sendStatus: 'sent' | 'failed' = 'failed'
 
-    console.log('[SMS SINGLE] ▶ Envoi AT', { phone: normalized, senderId: senderId || '(aucun)', messageId })
+    console.log('[SMS SINGLE] ▶ Envoi Infobip', { phone: normalized, senderId: senderId || '(aucun)', messageId })
 
     try {
-      const recipients = await africastalkingService.sendSms({
+      const results = await infobipService.sendSms({
         to: normalized,
         message,
         ...(senderId ? { from: senderId } : {}),
       })
 
-      console.log('[SMS SINGLE] ◀ Réponse AT:', JSON.stringify(recipients, null, 2))
+      console.log('[SMS SINGLE] ◀ Réponse Infobip:', JSON.stringify(results, null, 2))
 
-      const recipient = recipients[0]
-      if (recipient) {
-        atMessageId = recipient.messageId
-        // AT retourne 100 ou 101 pour succès selon le type de compte
-        atStatus = recipient.status === 'Success' ? 'sent' : 'failed'
-        if (atStatus === 'failed') {
-          console.warn(
-            `[SMS SINGLE] ❌ AT rejet — code: ${recipient.statusCode}, status: "${recipient.status}", numéro: ${recipient.number}`
-          )
+      const result = results[0]
+      if (result) {
+        providerMessageId = result.messageId
+        sendStatus = ['PENDING', 'SENT'].includes(result.status.groupName) ? 'sent' : 'failed'
+        if (sendStatus === 'failed') {
+          console.warn(`[SMS SINGLE] ❌ Infobip rejet — status: "${result.status.groupName}", desc: "${result.status.description}"`)
         } else {
-          console.log(`[SMS SINGLE] ✅ AT accepté — messageId: ${atMessageId}, coût: ${recipient.cost}`)
+          console.log(`[SMS SINGLE] ✅ Infobip accepté — messageId: ${providerMessageId}`)
         }
       } else {
-        console.warn('[SMS SINGLE] ⚠ AT a retourné un tableau vide')
+        console.warn('[SMS SINGLE] ⚠ Infobip a retourné un tableau vide')
       }
 
       await pool.execute(
         `UPDATE sms_messages
-           SET status = ?, at_message_id = ?, at_status_code = ?,
+           SET status = ?, at_message_id = ?,
                sent_at = IF(? = 'sent', NOW(), NULL), updated_at = NOW()
          WHERE id = ?`,
-        [atStatus, atMessageId || null, recipient?.statusCode ?? null, atStatus, messageId]
+        [sendStatus, providerMessageId || null, sendStatus, messageId]
       )
 
-      return { messageId, atMessageId, status: atStatus }
+      return { messageId, atMessageId: providerMessageId, status: sendStatus }
     } catch (err) {
-      console.error('[SMS SINGLE] 💥 Exception AT:', err)
+      console.error('[SMS SINGLE] 💥 Exception Infobip:', err)
       await pool.execute(
         "UPDATE sms_messages SET status = 'failed', updated_at = NOW() WHERE id = ?",
         [messageId]
@@ -1334,6 +1397,8 @@ export const smsService = {
     totalFailed: number
     deliveryRate: number
     activeCampaigns: number
+    totalContacts: number
+    totalLists: number
   }> {
     const [[stats]] = await pool.execute<RowDataPacket[]>(
       `SELECT
@@ -1342,6 +1407,15 @@ export const smsService = {
          SUM(total_failed)      as totalFailed,
          SUM(CASE WHEN status IN ('sending','queued') THEN 1 ELSE 0 END) as activeCampaigns
        FROM sms_campaigns
+       WHERE tenant_id = ? AND deleted_at IS NULL`,
+      [tenantId]
+    )
+
+    const [[contactStats]] = await pool.execute<RowDataPacket[]>(
+      `SELECT
+         COUNT(*) as totalLists,
+         COALESCE(SUM(count), 0) as totalContacts
+       FROM sms_contact_lists
        WHERE tenant_id = ? AND deleted_at IS NULL`,
       [tenantId]
     )
@@ -1355,7 +1429,59 @@ export const smsService = {
       totalDelivered:  delivered,
       totalFailed:     failed,
       deliveryRate:    sent > 0 ? Math.round((delivered / sent) * 100 * 10) / 10 : 0,
-      activeCampaigns: Number(stats.activeCampaigns) || 0,
+      activeCampaigns: Number(stats.activeCampaigns)    || 0,
+      totalContacts:   Number(contactStats.totalContacts) || 0,
+      totalLists:      Number(contactStats.totalLists)    || 0,
     }
+  },
+
+  // ── Clés API ─────────────────────────────────────────────────
+
+  async getApiKeys(tenantId: number): Promise<SmsApiKey[]> {
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      `SELECT id, tenant_id, created_by, name, key_preview, module,
+              is_active, requests_count, last_used_at, expires_at, created_at
+       FROM api_keys
+       WHERE tenant_id = ? AND deleted_at IS NULL
+       ORDER BY created_at DESC`,
+      [tenantId]
+    )
+    return rows as SmsApiKey[]
+  },
+
+  async createApiKey(
+    data: { name: string; module?: string },
+    tenantId: number,
+    userId: number
+  ): Promise<{ key: SmsApiKey; rawKey: string }> {
+    // Génère une clé aléatoire robuste : préfixe + 32 bytes hex
+    const rawKey     = `bsk_live_${crypto.randomBytes(32).toString('hex')}`
+    const keyHash    = crypto.createHash('sha256').update(rawKey).digest('hex')
+    const lastFour   = rawKey.slice(-4)
+    const keyPreview = `bsk_live_****...****${lastFour}`
+    const module     = data.module ?? 'sms'
+
+    const [result] = await pool.execute<ResultSetHeader>(
+      `INSERT INTO api_keys (tenant_id, created_by, name, key_hash, key_preview, module)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [tenantId, userId, data.name, keyHash, keyPreview, module]
+    )
+
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      `SELECT id, tenant_id, created_by, name, key_preview, module,
+              is_active, requests_count, last_used_at, expires_at, created_at
+       FROM api_keys WHERE id = ?`,
+      [result.insertId]
+    )
+
+    return { key: rows[0] as SmsApiKey, rawKey }
+  },
+
+  async deleteApiKey(id: number, tenantId: number): Promise<void> {
+    const [result] = await pool.execute<ResultSetHeader>(
+      'UPDATE api_keys SET deleted_at = NOW(), is_active = 0 WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
+      [id, tenantId]
+    )
+    if (result.affectedRows === 0) throw new Error('Clé API introuvable')
   },
 }

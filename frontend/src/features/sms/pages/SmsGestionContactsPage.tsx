@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Plus, Search, Upload, Download,
-  ChevronDown, X, List,
+  ChevronDown, X, List, Trash2,
   Send, AlertTriangle, Users, Loader2, PhoneOff, Phone,
   Database, CheckSquare, Square, CheckCircle2,
 } from 'lucide-react'
@@ -9,6 +9,75 @@ import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
 import type { SmsContactList, SmsListContact, CrmContact } from '../../../types/sms.types'
 import type { PaginationMeta } from '../../../services/sms.service'
+import { motion } from 'framer-motion'
+
+// ── Modal : Créer une liste ───────────────────────────────────
+
+interface CreateListModalProps {
+  onClose: () => void
+  onCreated: (list: SmsContactList) => void
+}
+
+function CreateListModal({ onClose, onCreated }: CreateListModalProps) {
+  const [name, setName]   = useState('')
+  const [desc, setDesc]   = useState('')
+  const [loading, setLoad] = useState(false)
+  const [error, setError]  = useState('')
+
+  async function handleCreate() {
+    if (!name.trim()) { setError('Le nom est requis'); return }
+    setLoad(true); setError('')
+    try {
+      const list = await smsService.createContactList({ name: name.trim(), description: desc.trim() || undefined })
+      onCreated(list)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la création')
+    } finally {
+      setLoad(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <h2 className="text-[15px] font-bold text-[#1F2937]">Nouvelle liste de diffusion</h2>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={14} /></button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div>
+            <label className="mb-1.5 block text-[11px] font-semibold text-gray-600">Nom de la liste *</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              placeholder="Ex: Clients VIP, Newsletter abonnés..."
+              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[12px] text-[#1F2937] outline-none focus:ring-2 focus:ring-[#F4511E]/20 focus:border-[#F4511E]"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[11px] font-semibold text-gray-600">
+              Description <span className="text-gray-400 font-normal">(optionnel)</span>
+            </label>
+            <textarea value={desc} onChange={e => setDesc(e.target.value)}
+              placeholder="Description de cette liste..."
+              rows={2}
+              className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-[12px] text-[#1F2937] outline-none focus:ring-2 focus:ring-[#F4511E]/20 focus:border-[#F4511E]"
+            />
+          </div>
+          {error && <p className="text-[11px] text-red-500">{error}</p>}
+        </div>
+        <div className="flex gap-3 border-t border-gray-100 px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-xl border border-gray-200 py-2.5 text-[12px] text-gray-600 hover:bg-gray-50">
+            Annuler
+          </button>
+          <button onClick={handleCreate} disabled={loading}
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-[#F4511E] py-2.5 text-[12px] font-bold text-white hover:bg-[#d9400f] disabled:opacity-60">
+            {loading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+            Créer
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ── Modal : Ajouter un contact ────────────────────────────────
 
@@ -84,6 +153,96 @@ function AddContactModal({ listId, listName, onClose, onAdded }: AddContactModal
             {loading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
             Ajouter
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal : Importer CSV ──────────────────────────────────────
+
+interface CsvImportModalProps {
+  listId: number
+  listName: string
+  onClose: () => void
+  onImported: (added: number) => void
+}
+
+function CsvImportModal({ listId, listName, onClose, onImported }: CsvImportModalProps) {
+  const [file, setFile]       = useState<File | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState('')
+  const [result, setResult]   = useState<{ added: number; skipped: number } | null>(null)
+  const inputRef              = useRef<HTMLInputElement>(null)
+
+  async function handleImport() {
+    if (!file) return
+    setLoading(true); setError('')
+    try {
+      const res = await smsService.importContactsCsv(listId, file)
+      setResult({ added: res.added, skipped: res.skipped })
+      onImported(res.added)
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message
+      setError(msg ?? 'Erreur lors de l\'import')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <h2 className="text-[15px] font-bold text-[#1F2937]">Importer un fichier CSV</h2>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={14} /></button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <p className="text-[12px] text-gray-500">
+            Liste cible : <span className="font-semibold text-[#F4511E]">{listName}</span>
+          </p>
+          <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 p-5 text-center">
+            <Upload size={24} className="mx-auto mb-2 text-gray-300" />
+            <p className="text-[12px] font-semibold text-gray-600">
+              {file ? file.name : 'Sélectionnez un fichier CSV'}
+            </p>
+            <p className="mt-1 text-[10px] text-gray-400">Format : téléphone, prénom, nom (1 par ligne)</p>
+            <button onClick={() => inputRef.current?.click()}
+              className="mt-3 rounded-xl border border-gray-200 px-3 py-1.5 text-[11px] font-semibold text-gray-600 hover:bg-white">
+              Choisir un fichier
+            </button>
+            <input ref={inputRef} type="file" accept=".csv,text/csv,text/plain"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) { setFile(f); setError(''); setResult(null) } }}
+            />
+          </div>
+          <div className="rounded-xl bg-[#FFF7ED] p-3 text-[11px] text-[#92400E]">
+            <p className="font-semibold mb-1">Format attendu :</p>
+            <p className="font-mono">+243815001234,Jean,Kabongo</p>
+            <p className="font-mono">+243995554321,Marie,Lumumba</p>
+            <p className="mt-1 text-[10px] text-gray-400">Séparateur virgule ou point-virgule. La 1ère ligne peut être un en-tête.</p>
+          </div>
+          {result && (
+            <div className="rounded-xl bg-[#F0FDF4] px-4 py-3">
+              <p className="text-[12px] font-semibold text-[#15803D]">
+                ✅ {result.added} contact(s) importé(s) avec succès
+                {result.skipped > 0 && ` — ${result.skipped} ignoré(s)`}
+              </p>
+            </div>
+          )}
+          {error && <p className="text-[11px] text-red-500">{error}</p>}
+        </div>
+        <div className="flex gap-3 border-t border-gray-100 px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-xl border border-gray-200 py-2.5 text-[12px] text-gray-600 hover:bg-gray-50">
+            {result ? 'Fermer' : 'Annuler'}
+          </button>
+          {!result && (
+            <button onClick={handleImport} disabled={!file || loading}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-[#F4511E] py-2.5 text-[12px] font-bold text-white hover:bg-[#d9400f] disabled:opacity-60">
+              {loading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+              Importer
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -177,7 +336,6 @@ function ImportCrmModal({ listId, listName, onClose, onImported }: ImportCrmModa
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh]">
 
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 shrink-0">
           <div>
             <h2 className="text-[15px] font-bold text-[#1F2937]">Importer depuis le CRM</h2>
@@ -189,7 +347,6 @@ function ImportCrmModal({ listId, listName, onClose, onImported }: ImportCrmModa
           <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={14} /></button>
         </div>
 
-        {/* Résultat import */}
         {result && (
           <div className="mx-6 mt-4 flex items-center gap-2 rounded-xl bg-[#F0FDF4] px-4 py-3 shrink-0">
             <CheckCircle2 size={16} className="text-[#16A34A] shrink-0" />
@@ -200,7 +357,6 @@ function ImportCrmModal({ listId, listName, onClose, onImported }: ImportCrmModa
           </div>
         )}
 
-        {/* Recherche */}
         <div className="mx-6 mt-4 flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 shrink-0">
           <Search size={13} className="text-gray-400 shrink-0" />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
@@ -209,7 +365,6 @@ function ImportCrmModal({ listId, listName, onClose, onImported }: ImportCrmModa
           />
         </div>
 
-        {/* Table */}
         <div className="overflow-y-auto flex-1 mx-6 my-4 rounded-xl border border-gray-100 shadow-sm">
           <table className="w-full">
             <thead className="sticky top-0 bg-gray-50/90 backdrop-blur-sm">
@@ -262,7 +417,6 @@ function ImportCrmModal({ listId, listName, onClose, onImported }: ImportCrmModa
           </table>
         </div>
 
-        {/* Pagination */}
         {meta && meta.lastPage > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-6 py-2 shrink-0">
             <span className="text-[11px] text-gray-400">Page {meta.page} / {meta.lastPage} — {meta.total} contacts avec téléphone</span>
@@ -275,7 +429,6 @@ function ImportCrmModal({ listId, listName, onClose, onImported }: ImportCrmModa
           </div>
         )}
 
-        {/* Footer */}
         <div className="flex items-center justify-between border-t border-gray-100 px-6 py-4 shrink-0">
           <span className="text-[12px] text-gray-500">
             {selected.size === 0 ? 'Sélectionnez des contacts à importer' : `${selected.size} contact(s) prêt(s) à importer`}
@@ -298,68 +451,144 @@ function ImportCrmModal({ listId, listName, onClose, onImported }: ImportCrmModa
   )
 }
 
+// ── Helpers ───────────────────────────────────────────────────
+
+const fadeUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+}
+
+function pageNums(current: number, last: number): number[] {
+  const s = Math.max(1, Math.min(current - 2, last - 4))
+  const e = Math.min(last, s + 4)
+  return Array.from({ length: e - s + 1 }, (_, i) => s + i)
+}
+
 // ── Page principale ───────────────────────────────────────────
 
 export default function SmsGestionContactsPage() {
-  const [listes, setListes]         = useState<SmsContactList[]>([])
-  const [contacts, setContacts]     = useState<SmsListContact[]>([])
-  const [meta, setMeta]             = useState<PaginationMeta | null>(null)
-  const [selectedList, setSelList]  = useState<SmsContactList | null>(null)
-  const [listOpen, setListOpen]     = useState(false)
-  const [statutFilter, setStatut]   = useState<'all' | 'active' | 'optout'>('all')
-  const [search, setSearch]         = useState('')
-  const [page, setPage]             = useState(1)
-  const [loadingLists, setLoadingL] = useState(true)
-  const [loadingCtx, setLoadingCtx] = useState(false)
-  const [selected, setSelected]     = useState<number[]>([])
-  const [showModal, setModal]       = useState(false)
-  const [showCrmModal, setCrmModal] = useState(false)
+  const [listes, setListes]             = useState<SmsContactList[]>([])
+  const [contacts, setContacts]         = useState<SmsListContact[]>([])
+  const [meta, setMeta]                 = useState<PaginationMeta | null>(null)
+  const [selectedList, setSelList]      = useState<SmsContactList | null>(null)
+  const [listOpen, setListOpen]         = useState(false)
+  const [statutFilter, setStatut]       = useState<'all' | 'active' | 'optout'>('all')
+  const [search, setSearch]             = useState('')
+  const [page, setPage]                 = useState(1)
+  const [loadingLists, setLoadingL]     = useState(true)
+  const [loadingCtx, setLoadingCtx]     = useState(false)
+  const [selected, setSelected]         = useState<number[]>([])
+  const [showModal, setModal]           = useState(false)
+  const [showCrmModal, setCrmModal]     = useState(false)
+  const [showCsvModal, setCsvModal]     = useState(false)
+  const [showCreateList, setCreateList] = useState(false)
 
-  // Charger les listes au montage
-  useEffect(() => {
-    smsService.getContactLists().then(data => {
-      setListes(data)
-      if (data.length > 0) setSelList(data[0])
-    }).catch(() => {}).finally(() => setLoadingL(false))
-  }, [])
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Charger les contacts quand la liste sélectionnée change
-  const fetchContacts = useCallback(async (listId: number, p: number) => {
+  const fetchContacts = useCallback(async (
+    listId: number, p: number, q = '', status: 'all' | 'active' | 'optout' = 'all'
+  ) => {
     setLoadingCtx(true)
     try {
-      const { contacts: data, meta: m } = await smsService.getContactsInList(listId, { page: p, limit: 20 })
+      const optedOut = status === 'optout' ? true : status === 'active' ? false : undefined
+      const { contacts: data, meta: m } = await smsService.getContactsInList(listId, {
+        page: p, limit: 20, search: q || undefined, optedOut,
+      })
       setContacts(data)
       setMeta(m)
     } catch {
       setContacts([])
+      setMeta(null)
     } finally {
       setLoadingCtx(false)
     }
   }, [])
 
+  // Chargement initial des listes
   useEffect(() => {
-    if (selectedList) { fetchContacts(selectedList.id, page) }
-  }, [selectedList, page, fetchContacts])
+    smsService.getContactLists().then(data => {
+      setListes(data)
+      if (data.length > 0) {
+        setSelList(data[0])
+        fetchContacts(data[0].id, 1, '', 'all')
+      }
+    }).catch(() => {}).finally(() => setLoadingL(false))
+  }, [fetchContacts])
 
-  // Filtres locaux
-  const filtered = contacts.filter(c => {
-    const name = `${c.first_name ?? ''} ${c.last_name ?? ''}`.toLowerCase()
-    const matchSearch = search
-      ? c.phone.includes(search) || name.includes(search.toLowerCase())
-      : true
-    const matchStatut = statutFilter === 'all' ? true
-      : statutFilter === 'optout' ? c.opted_out
-      : !c.opted_out
-    return matchSearch && matchStatut
-  })
+  // Rechargement quand la page change (garde search + status courants)
+  useEffect(() => {
+    if (selectedList && page > 1) fetchContacts(selectedList.id, page, search, statutFilter)
+  }, [page]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleListChange(l: SmsContactList) {
+    setSelList(l)
+    setListOpen(false)
+    setPage(1)
+    setSearch('')
+    setStatut('all')
+    setSelected([])
+    fetchContacts(l.id, 1, '', 'all')
+  }
+
+  function handleSearchChange(q: string) {
+    setSearch(q)
+    if (!selectedList) return
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => {
+      setPage(1)
+      fetchContacts(selectedList.id, 1, q, statutFilter)
+    }, 300)
+  }
+
+  function handleStatusChange(s: 'all' | 'active' | 'optout') {
+    setStatut(s)
+    if (!selectedList) return
+    setPage(1)
+    fetchContacts(selectedList.id, 1, search, s)
+  }
+
+  async function handleDeleteList(l: SmsContactList) {
+    if (!window.confirm(`Supprimer la liste "${l.name}" (${l.contact_count} contacts) ? Cette action est irréversible.`)) return
+    try {
+      await smsService.deleteContactList(l.id)
+      const remaining = listes.filter(x => x.id !== l.id)
+      setListes(remaining)
+      if (selectedList?.id === l.id) {
+        const next = remaining[0] ?? null
+        setSelList(next)
+        if (next) fetchContacts(next.id, 1, '', 'all')
+        else { setContacts([]); setMeta(null) }
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur lors de la suppression')
+    }
+  }
+
+  function handleExport() {
+    if (!selectedList || contacts.length === 0) return
+    const BOM = '﻿'
+    const header = 'Téléphone,Prénom,Nom,Statut,Date ajout'
+    const rows = contacts.map(c =>
+      [c.phone, c.first_name ?? '', c.last_name ?? '',
+       c.opted_out ? 'Désabonné' : 'Actif',
+       new Date(c.created_at).toLocaleDateString('fr-FR'),
+      ].join(',')
+    ).join('\n')
+    const blob = new Blob([BOM + header + '\n' + rows], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${selectedList.name.replace(/\s+/g, '_')}_contacts.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const totalContacts = listes.reduce((s, l) => s + l.contact_count, 0)
-  const totalOptout   = contacts.filter(c => c.opted_out).length
 
   const toggleSelect = (id: number) =>
     setSelected(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
   const toggleAll = () =>
-    setSelected(prev => prev.length === filtered.length ? [] : filtered.map(c => c.id))
+    setSelected(prev => prev.length === contacts.length ? [] : contacts.map(c => c.id))
 
   function displayName(c: SmsListContact) {
     const n = [c.first_name, c.last_name].filter(Boolean).join(' ')
@@ -375,7 +604,7 @@ export default function SmsGestionContactsPage() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="px-6 py-5">
+      <motion.div className="px-6 py-5" variants={fadeUp} initial="initial" animate="animate">
 
         {/* Header */}
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -383,13 +612,22 @@ export default function SmsGestionContactsPage() {
             <h1 className="text-[22px] font-bold text-[#1F2937]">
               <span className="mr-2">🎯</span>Contacts SMS
             </h1>
-            <p className="mt-0.5 text-[13px] text-gray-500">Contacts de vos listes de diffusion</p>
+            <p className="mt-0.5 text-[13px] text-gray-500">Listes de diffusion et contacts</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-[12px] font-semibold text-gray-700 hover:bg-gray-50">
+            <button onClick={() => setCreateList(true)}
+              className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-[12px] font-semibold text-gray-700 hover:bg-gray-50">
+              <List size={13} /> Nouvelle liste
+            </button>
+            <button onClick={() => selectedList && setCsvModal(true)}
+              disabled={!selectedList}
+              className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40">
               <Upload size={13} /> Importer CSV
             </button>
-            <button className="flex items-center gap-1.5 rounded-xl border border-[#F4511E] px-3 py-2 text-[12px] font-semibold text-[#F4511E] hover:bg-orange-50">
+            <button onClick={handleExport}
+              disabled={!selectedList || contacts.length === 0}
+              title="Exporter la page courante en CSV"
+              className="flex items-center gap-1.5 rounded-xl border border-[#F4511E] px-3 py-2 text-[12px] font-semibold text-[#F4511E] hover:bg-orange-50 disabled:opacity-40">
               <Download size={13} /> Exporter
             </button>
             {selectedList && (
@@ -410,10 +648,26 @@ export default function SmsGestionContactsPage() {
         {/* KPI Cards */}
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: 'Total Contacts', value: totalContacts.toLocaleString('fr-FR'), sub: `${listes.length} liste(s)`,         color: '#3B82F6', bg: '#EFF6FF', icon: Users },
-            { label: 'Contacts Actifs', value: selectedList ? (selectedList.contact_count - totalOptout).toLocaleString('fr-FR') : '-', sub: selectedList?.name ?? 'Sélectionnez une liste', color: '#22C55E', bg: '#F0FDF4', icon: Phone },
-            { label: 'Listes',          value: listes.length, sub: 'Listes de diffusion', color: '#F97316', bg: '#FFF7ED', icon: List },
-            { label: 'Désabonnés',      value: totalOptout, sub: 'Liste sélectionnée',      color: '#EF4444', bg: '#FEF2F2', icon: AlertTriangle },
+            {
+              label: 'Total Contacts', icon: Users, color: '#3B82F6', bg: '#EFF6FF',
+              value: totalContacts.toLocaleString('fr-FR'),
+              sub: `${listes.length} liste(s)`,
+            },
+            {
+              label: 'Liste sélectionnée', icon: Phone, color: '#22C55E', bg: '#F0FDF4',
+              value: selectedList ? selectedList.contact_count.toLocaleString('fr-FR') : '—',
+              sub: selectedList?.name ?? 'Sélectionnez une liste',
+            },
+            {
+              label: 'Listes', icon: List, color: '#F97316', bg: '#FFF7ED',
+              value: listes.length,
+              sub: 'Listes de diffusion',
+            },
+            {
+              label: 'Résultats filtrés', icon: AlertTriangle, color: '#8B5CF6', bg: '#F5F3FF',
+              value: meta ? meta.total.toLocaleString('fr-FR') : '—',
+              sub: search || statutFilter !== 'all' ? 'Avec filtres actifs' : 'Tous les contacts',
+            },
           ].map(({ label, value, sub, color, bg, icon: Icon }) => (
             <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
@@ -421,7 +675,7 @@ export default function SmsGestionContactsPage() {
               </div>
               <p className="text-[20px] font-bold text-[#1F2937]">{value}</p>
               <p className="mt-0.5 text-[11px] text-gray-500">{label}</p>
-              <p className="mt-0.5 text-[10px]" style={{ color }}>{sub}</p>
+              <p className="mt-0.5 text-[10px] truncate" style={{ color }}>{sub}</p>
             </div>
           ))}
         </div>
@@ -438,19 +692,29 @@ export default function SmsGestionContactsPage() {
               <ChevronDown size={12} className={`transition-transform ${listOpen ? 'rotate-180' : ''}`} />
             </button>
             {listOpen && (
-              <div className="absolute left-0 top-full z-20 mt-1 max-h-48 w-52 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg">
+              <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-64 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg">
                 {loadingLists && (
                   <div className="flex items-center justify-center py-4"><Loader2 size={14} className="animate-spin text-gray-300" /></div>
                 )}
                 {!loadingLists && listes.length === 0 && (
-                  <div className="px-4 py-3 text-[12px] text-gray-400">Aucune liste trouvée</div>
+                  <div className="px-4 py-3 text-[12px] text-gray-400">Aucune liste — créez-en une</div>
                 )}
                 {listes.map(l => (
-                  <button key={l.id} onClick={() => { setSelList(l); setListOpen(false); setPage(1); setSelected([]) }}
-                    className={`w-full px-4 py-2.5 text-left text-[12px] hover:bg-orange-50 ${l.id === selectedList?.id ? 'font-semibold text-[#F4511E]' : 'text-gray-700'}`}>
-                    {l.name}
-                    <span className="ml-1.5 text-[10px] text-gray-400">({l.contact_count})</span>
-                  </button>
+                  <div key={l.id}
+                    className={`flex items-center justify-between px-3 py-2.5 ${l.id === selectedList?.id ? 'bg-orange-50/50' : 'hover:bg-orange-50/30'}`}>
+                    <button
+                      onClick={() => handleListChange(l)}
+                      className={`flex-1 text-left text-[12px] ${l.id === selectedList?.id ? 'font-semibold text-[#F4511E]' : 'text-gray-700'}`}>
+                      {l.name}
+                      <span className="ml-1.5 text-[10px] text-gray-400">({l.contact_count})</span>
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDeleteList(l) }}
+                      className="ml-2 shrink-0 rounded p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      title="Supprimer cette liste">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -459,29 +723,38 @@ export default function SmsGestionContactsPage() {
           {/* Recherche */}
           <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
             <Search size={13} className="shrink-0 text-gray-400" />
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            <input type="text" value={search} onChange={e => handleSearchChange(e.target.value)}
               placeholder="Téléphone ou nom..."
               className="flex-1 bg-transparent text-[12px] text-[#1F2937] outline-none placeholder-gray-400"
             />
+            {search && (
+              <button onClick={() => handleSearchChange('')} className="text-gray-300 hover:text-gray-500">
+                <X size={12} />
+              </button>
+            )}
           </div>
 
           {/* Statut */}
           {(['all','active','optout'] as const).map(s => (
-            <button key={s} onClick={() => setStatut(s)}
+            <button key={s} onClick={() => handleStatusChange(s)}
               className={`rounded-xl px-3 py-2 text-[12px] font-medium transition-colors ${statutFilter === s ? 'bg-[#F4511E] text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
               {s === 'all' ? 'Tous' : s === 'active' ? 'Actifs' : 'Désabonnés'}
             </button>
           ))}
         </div>
 
-        {/* Message "pas de liste sélectionnée" */}
+        {/* État vide — aucune liste */}
         {!selectedList && !loadingLists && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#FFF7ED]">
               <List size={22} className="text-[#F4511E]" />
             </div>
-            <p className="text-[14px] font-semibold text-[#1F2937]">Sélectionnez une liste</p>
-            <p className="mt-1 text-[12px] text-gray-400">Choisissez une liste de diffusion pour voir ses contacts</p>
+            <p className="text-[14px] font-semibold text-[#1F2937]">Aucune liste de diffusion</p>
+            <p className="mt-1 text-[12px] text-gray-400">Créez votre première liste pour commencer</p>
+            <button onClick={() => setCreateList(true)}
+              className="mt-4 flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-4 py-2 text-[12px] font-bold text-white hover:bg-[#d9400f]">
+              <Plus size={13} /> Nouvelle liste
+            </button>
           </div>
         )}
 
@@ -491,7 +764,9 @@ export default function SmsGestionContactsPage() {
             <div className="flex items-center justify-between px-5 py-3 border-b border-gray-50">
               <p className="text-[12px] font-semibold text-[#1F2937]">
                 {selectedList.name}
-                <span className="ml-2 text-gray-400 font-normal">— {selectedList.contact_count} contact(s)</span>
+                <span className="ml-2 text-gray-400 font-normal">
+                  — {meta ? `${meta.total} contact(s)` : `${selectedList.contact_count} contact(s)`}
+                </span>
               </p>
               {selected.length > 0 && (
                 <span className="text-[11px] font-semibold text-[#F4511E]">{selected.length} sélectionné(s)</span>
@@ -503,7 +778,8 @@ export default function SmsGestionContactsPage() {
                 <thead>
                   <tr className="border-b border-gray-50 bg-gray-50/60">
                     <th className="px-4 py-2.5 text-left">
-                      <input type="checkbox" checked={selected.length === filtered.length && filtered.length > 0}
+                      <input type="checkbox"
+                        checked={selected.length === contacts.length && contacts.length > 0}
                         onChange={toggleAll} className="rounded" />
                     </th>
                     {['Contact', 'Téléphone', 'Statut', 'Ajouté le', 'Actions'].map(h => (
@@ -519,35 +795,32 @@ export default function SmsGestionContactsPage() {
                       </td>
                     </tr>
                   )}
-                  {!loadingCtx && filtered.length === 0 && (
+                  {!loadingCtx && contacts.length === 0 && (
                     <tr>
                       <td colSpan={6} className="py-10 text-center text-[12px] text-gray-400">
-                        Aucun contact trouvé
+                        {search || statutFilter !== 'all'
+                          ? 'Aucun contact ne correspond aux filtres'
+                          : 'Aucun contact dans cette liste'}
                       </td>
                     </tr>
                   )}
-                  {!loadingCtx && filtered.map(c => (
+                  {!loadingCtx && contacts.map(c => (
                     <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       <td className="px-4 py-3">
                         <input type="checkbox" checked={selected.includes(c.id)} onChange={() => toggleSelect(c.id)} className="rounded" />
                       </td>
 
-                      {/* Contact */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F4511E] text-[11px] font-bold text-white">
                             {initials(c)}
                           </div>
-                          <div>
-                            <p className="text-[12px] font-semibold text-[#1F2937]">{displayName(c)}</p>
-                          </div>
+                          <p className="text-[12px] font-semibold text-[#1F2937]">{displayName(c)}</p>
                         </div>
                       </td>
 
-                      {/* Téléphone */}
-                      <td className="px-4 py-3 text-[12px] text-gray-700 whitespace-nowrap">{c.phone}</td>
+                      <td className="px-4 py-3 text-[12px] text-gray-700 whitespace-nowrap font-mono">{c.phone}</td>
 
-                      {/* Statut */}
                       <td className="px-4 py-3">
                         {c.opted_out ? (
                           <span className="flex w-fit items-center gap-1.5 rounded-full bg-[#FEF2F2] px-2.5 py-1 text-[10px] font-semibold text-[#DC2626]">
@@ -560,14 +833,12 @@ export default function SmsGestionContactsPage() {
                         )}
                       </td>
 
-                      {/* Date ajout */}
                       <td className="px-4 py-3 text-[11px] text-gray-400 whitespace-nowrap">
                         {new Date(c.created_at).toLocaleDateString('fr-FR')}
                       </td>
 
-                      {/* Actions */}
                       <td className="px-4 py-3">
-                        <button className="rounded p-1.5 text-[#3B82F6] hover:bg-blue-50 transition-colors" title="Envoyer SMS">
+                        <button className="rounded p-1.5 text-[#3B82F6] hover:bg-blue-50 transition-colors" title="Envoyer SMS individuel">
                           <Send size={13} />
                         </button>
                       </td>
@@ -588,7 +859,7 @@ export default function SmsGestionContactsPage() {
                     className="rounded px-2 py-1 text-[11px] text-gray-500 hover:bg-gray-100 disabled:opacity-40">
                     Précédent
                   </button>
-                  {Array.from({ length: Math.min(5, meta.lastPage) }, (_, i) => i + 1).map(n => (
+                  {pageNums(page, meta.lastPage).map(n => (
                     <button key={n} onClick={() => setPage(n)}
                       className={`flex h-6 w-6 items-center justify-center rounded text-[11px] font-semibold ${page === n ? 'bg-[#F4511E] text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
                       {n}
@@ -604,7 +875,19 @@ export default function SmsGestionContactsPage() {
           </div>
         )}
 
-      </div>
+      </motion.div>
+
+      {/* Modals */}
+      {showCreateList && (
+        <CreateListModal
+          onClose={() => setCreateList(false)}
+          onCreated={list => {
+            setListes(prev => [...prev, list])
+            setCreateList(false)
+            handleListChange(list)
+          }}
+        />
+      )}
 
       {showModal && selectedList && (
         <AddContactModal
@@ -613,7 +896,7 @@ export default function SmsGestionContactsPage() {
           onClose={() => setModal(false)}
           onAdded={() => {
             setModal(false)
-            fetchContacts(selectedList.id, page)
+            fetchContacts(selectedList.id, page, search, statutFilter)
             setListes(prev => prev.map(l => l.id === selectedList.id ? { ...l, contact_count: l.contact_count + 1 } : l))
           }}
         />
@@ -624,8 +907,20 @@ export default function SmsGestionContactsPage() {
           listId={selectedList.id}
           listName={selectedList.name}
           onClose={() => setCrmModal(false)}
-          onImported={(added) => {
-            fetchContacts(selectedList.id, page)
+          onImported={added => {
+            fetchContacts(selectedList.id, page, search, statutFilter)
+            setListes(prev => prev.map(l => l.id === selectedList.id ? { ...l, contact_count: l.contact_count + added } : l))
+          }}
+        />
+      )}
+
+      {showCsvModal && selectedList && (
+        <CsvImportModal
+          listId={selectedList.id}
+          listName={selectedList.name}
+          onClose={() => setCsvModal(false)}
+          onImported={added => {
+            fetchContacts(selectedList.id, page, search, statutFilter)
             setListes(prev => prev.map(l => l.id === selectedList.id ? { ...l, contact_count: l.contact_count + added } : l))
           }}
         />

@@ -1,9 +1,18 @@
 import { useState } from 'react'
-import { Send, Image, Video, Plus, X, MessageSquare, Eye } from 'lucide-react'
+import { Send, Image, Video, Plus, X, MessageSquare, Eye, BookOpen, MousePointerClick } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
+import { motion } from 'framer-motion'
 
 const TABS = ['Composer', 'Templates', 'Analytics'] as const
 type Tab = typeof TABS[number]
+
+const fadeUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+}
+const stagger = {
+  animate: { transition: { staggerChildren: 0.07 } },
+}
 
 export default function SmsMessagesRcsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('Composer')
@@ -18,28 +27,31 @@ export default function SmsMessagesRcsPage() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="px-6 py-5">
+      <motion.div className="px-6 py-5" variants={stagger} initial="initial" animate="animate">
 
         {/* Header */}
-        <div className="mb-5">
+        <motion.div className="mb-5" variants={fadeUp}>
           <h1 className="text-[22px] font-bold text-[#1F2937]">Messages RCS (Rich Communication Services)</h1>
           <p className="mt-0.5 text-[13px] text-gray-500">Envoyez des messages enrichis avec : images, vidéos, boutons interactifs et bien plus encore</p>
-        </div>
+        </motion.div>
 
         {/* KPIs */}
-        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <motion.div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4" variants={stagger}>
           {[
-            { label: 'Messages envoyés',   value: '2 456', color: '#3B82F6', bg: '#EFF6FF' },
-            { label: 'Taux de lecture',    value: '89%',   color: '#22C55E', bg: '#F0FDF4' },
-            { label: "Taux d'interaction", value: '34%',   color: '#8B5CF6', bg: '#F5F3FF' },
-            { label: 'Clics boutons',      value: '1 234', color: '#F97316', bg: '#FFF7ED' },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <p className="text-[20px] font-bold" style={{ color }}>{value}</p>
-              <p className="mt-1 text-[11px] text-gray-500">{label}</p>
-            </div>
+            { icon: Send,               label: 'Messages envoyés',   value: '2 456', color: '#3B82F6', bg: '#EFF6FF' },
+            { icon: BookOpen,           label: 'Taux de lecture',    value: '89%',   color: '#22C55E', bg: '#F0FDF4' },
+            { icon: MessageSquare,      label: "Taux d'interaction", value: '34%',   color: '#8B5CF6', bg: '#F5F3FF' },
+            { icon: MousePointerClick,  label: 'Clics boutons',      value: '1 234', color: '#F97316', bg: '#FFF7ED' },
+          ].map(({ icon: Icon, label, value, color, bg }) => (
+            <motion.div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm" variants={fadeUp}>
+              <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
+                <Icon size={15} style={{ color }} />
+              </div>
+              <p className="text-[20px] font-bold text-[#1F2937]">{value}</p>
+              <p className="mt-0.5 text-[11px] text-gray-500">{label}</p>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
 
         {/* Tabs */}
         <div className="mb-5 flex gap-0 border-b border-gray-200">
@@ -202,7 +214,7 @@ export default function SmsMessagesRcsPage() {
           </div>
         )}
 
-      </div>
+      </motion.div>
       <DashboardFooter />
     </div>
   )

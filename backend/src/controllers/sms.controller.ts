@@ -2,22 +2,23 @@ import { Request, Response } from 'express'
 import { z } from 'zod'
 import { smsService } from '../services/sms.service'
 import { sendSuccess, sendError } from '../helpers/response.helper'
-import type { AtDlrPayload } from '../services/africastalking.service'
+import type { InfobipDlrPayload } from '../services/infobip.service'
 
 // ── Schemas Zod ───────────────────────────────────────────────
 
 const createCampaignSchema = z.object({
-  name:        z.string().min(1, 'Le nom est requis').max(200),
-  message:     z.string().min(1, 'Le message est requis').max(4096),
-  senderId:    z.string().regex(/^[A-Za-z0-9]{1,11}$/, 'Sender ID : 1–11 caractères alphanumériques'),
-  listIds:     z.array(z.number().int().positive()).min(1, 'Sélectionnez au moins une liste'),
-  scheduledAt: z.string().datetime().optional(),
+  name:         z.string().min(1, 'Le nom est requis').max(200),
+  message:      z.string().min(1, 'Le message est requis').max(4096),
+  senderId:     z.union([z.string().regex(/^[A-Za-z0-9]{1,11}$/), z.literal('')]).optional().default(''),
+  listIds:      z.array(z.number().int().positive()).min(1, 'Sélectionnez au moins une liste'),
+  scheduledAt:  z.string().datetime().optional(),
+  campaignType: z.enum(['promotional','transactional','otp','notification']).optional().default('promotional'),
 })
 
 const updateCampaignSchema = z.object({
   name:        z.string().min(1).max(200).optional(),
   message:     z.string().min(1).max(4096).optional(),
-  senderId:    z.string().regex(/^[A-Za-z0-9]{1,11}$/).optional(),
+  senderId:    z.union([z.string().regex(/^[A-Za-z0-9]{1,11}$/), z.literal('')]).optional(),
   listIds:     z.array(z.number().int().positive()).optional(),
   scheduledAt: z.string().datetime().nullable().optional(),
 })
@@ -77,18 +78,29 @@ function getPage(req: Request) {
   return { page: Number(req.query.page) || 1, limit: Number(req.query.limit) || 20 }
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 function htmlPage(title: string, body: string, success: boolean): string {
-  const color = success ? '#16A34A' : '#DC2626'
+  const color     = success ? '#16A34A' : '#DC2626'
+  const safeTitle = escapeHtml(title)
+  // body est construit par notre propre code — on ne l'échappe pas pour conserver le HTML
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>${title} — BIAR Actor Hub</title>
-    <style>body{font-family:Arial,sans-serif;background:#f9fafb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
-    .box{background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:480px;width:90%;padding:40px;text-align:center}
-    h1{color:${color};font-size:20px;margin:0 0 16px}.icon{font-size:48px;margin-bottom:16px}p{color:#374151;font-size:14px;line-height:1.6}
-    .brand{color:#E91E8C;font-weight:700;font-size:13px;margin-top:24px}</style>
+    <title>${safeTitle} — BIAR Actor Hub</title>
+    <style>
+      body{font-family:Arial,sans-serif;background:#f9fafb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+      .box{background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:480px;width:90%;padding:40px;text-align:center}
+      h1{color:${color};font-size:20px;margin:0 0 16px}
+      .icon{font-size:48px;margin-bottom:16px}
+      p{color:#374151;font-size:14px;line-height:1.6}
+      strong{color:#1F2937}
+      .brand{color:#E91E8C;font-weight:700;font-size:13px;margin-top:24px}
+    </style>
   </head><body><div class="box">
     <div class="icon">${success ? '✅' : '❌'}</div>
-    <h1>${title}</h1><p>${body}</p>
+    <h1>${safeTitle}</h1><p>${body}</p>
     <p class="brand">BIAR GROUP AFRICA — Actor Hub</p>
   </div></body></html>`
 }
@@ -103,7 +115,11 @@ export const smsController = {
     try {
       const { page, limit } = getPage(req)
       const result = await smsService.getCampaigns(req.tenantId!, {
-        page, limit, status: req.query.status as string | undefined,
+        page, limit,
+        status:       req.query.status       as string | undefined,
+        campaignType: req.query.campaignType as string | undefined,
+        from:         req.query.from         as string | undefined,
+        to:           req.query.to           as string | undefined,
       })
       sendSuccess(res, result.campaigns, 'Campagnes récupérées', 200, {
         page, perPage: limit, total: result.total,
@@ -180,6 +196,7 @@ export const smsController = {
       const result = await smsService.getMessages(req.tenantId!, {
         page, limit,
         campaignId: req.query.campaignId ? Number(req.query.campaignId) : undefined,
+        singleOnly: req.query.singleOnly === 'true',
         status:     req.query.status as string | undefined,
       })
       sendSuccess(res, result.messages, 'Messages récupérés', 200, {
@@ -199,19 +216,26 @@ export const smsController = {
   async handleDlr(req: Request, res: Response): Promise<void> {
     try {
       const token = req.query.token as string
-      if (token !== process.env.AT_DLR_SECRET) {
+      if (token !== process.env.INFOBIP_DLR_SECRET) {
         res.status(401).send('Unauthorized'); return
       }
 
-      const payload = req.body as AtDlrPayload
-      if (!payload.id) { res.status(400).send('Missing id'); return }
+      const payload = req.body as InfobipDlrPayload
+      if (!payload.results || !Array.isArray(payload.results)) {
+        res.status(400).send('Missing results'); return
+      }
 
-      await smsService.handleDlr(payload.id, payload.status, payload.failureReason)
-      // AT attend toujours un 200 — sinon il retente
+      for (const result of payload.results) {
+        if (!result.messageId) continue
+        const failureReason = result.error?.groupName !== 'OK' ? result.error?.groupName : undefined
+        await smsService.handleDlr(result.messageId, result.status.groupName, failureReason)
+      }
+
+      // Infobip attend toujours un 200 — sinon il retente le webhook
       res.status(200).send('OK')
     } catch (err) {
       console.error('[DLR]', err)
-      res.status(200).send('OK') // toujours 200 pour éviter les reliveries AT
+      res.status(200).send('OK')
     }
   },
 
@@ -324,7 +348,8 @@ export const smsController = {
       if (!parsed.success) {
         sendError(res, 422, 'VALIDATION_ERROR', parsed.error.errors[0].message); return
       }
-      const tenantId = req.tenantId ?? 1 // OTP peut être appelé par des apps externes
+      const tenantId = req.tenantId
+      if (!tenantId) { sendError(res, 401, 'UNAUTHORIZED', 'Tenant non identifié'); return }
       const result = await smsService.sendOtp(parsed.data.phone, tenantId, parsed.data.senderId)
       sendSuccess(res, { expiresAt: result.expiresAt }, 'Code OTP envoyé')
     } catch (err) {
@@ -339,7 +364,8 @@ export const smsController = {
       if (!parsed.success) {
         sendError(res, 422, 'VALIDATION_ERROR', parsed.error.errors[0].message); return
       }
-      const tenantId = req.tenantId ?? 1
+      const tenantId = req.tenantId
+      if (!tenantId) { sendError(res, 401, 'UNAUTHORIZED', 'Tenant non identifié'); return }
       const valid = await smsService.verifyOtp(parsed.data.phone, parsed.data.code, tenantId)
       if (!valid) { sendError(res, 400, 'INVALID_OTP', 'Code invalide ou expiré'); return }
       sendSuccess(res, { verified: true }, 'OTP vérifié')
@@ -478,8 +504,12 @@ export const smsController = {
   async getContactsInList(req: Request, res: Response): Promise<void> {
     try {
       const { page, limit } = getPage(req)
+      const search   = req.query.search   as string | undefined
+      const optedOut = req.query.optedOut === 'true' ? true
+                     : req.query.optedOut === 'false' ? false
+                     : undefined
       const result = await smsService.getContactsInList(
-        Number(req.params.id), req.tenantId!, { page, limit }
+        Number(req.params.id), req.tenantId!, { page, limit, search, optedOut }
       )
       sendSuccess(res, result.contacts, 'Contacts récupérés', 200, {
         page, perPage: limit, total: result.total,
@@ -504,6 +534,24 @@ export const smsController = {
       })
     } catch (err) {
       sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  async importContactsCsv(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.file) {
+        sendError(res, 400, 'MISSING_FILE', 'Fichier CSV requis'); return
+      }
+      const csvContent = req.file.buffer.toString('utf-8')
+      const result = await smsService.importContactsCsv(
+        Number(req.params.id),
+        csvContent,
+        req.tenantId!
+      )
+      sendSuccess(res, result, `${result.added} contact(s) importé(s)`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur serveur'
+      sendError(res, msg.includes('introuvable') ? 404 : 500, 'ERROR', msg)
     }
   },
 
@@ -575,20 +623,16 @@ export const smsController = {
     try {
       const parsed = sendSingleSchema.safeParse(req.body)
       if (!parsed.success) {
-        console.warn('[sendSingleSms] Validation échouée:', parsed.error.errors[0].message, '| body:', req.body)
         sendError(res, 422, 'VALIDATION_ERROR', parsed.error.errors[0].message); return
       }
-      console.log('[sendSingleSms] Payload validé:', parsed.data, '| tenant:', req.tenantId)
       const result = await smsService.sendSingle({
         ...parsed.data,
         tenantId: req.tenantId!,
         userId:   req.user!.id,
       })
-      console.log('[sendSingleSms] Résultat final:', result)
       sendSuccess(res, result, result.status === 'sent' ? 'SMS envoyé' : 'Envoi échoué')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur serveur'
-      console.error('[sendSingleSms] Erreur:', msg)
       const code = msg.includes('non approuvé') || msg.includes('invalide') ? 400 : 500
       sendError(res, code, 'SEND_ERROR', msg)
     }
@@ -615,6 +659,44 @@ export const smsController = {
       sendSuccess(res, stats)
     } catch (err) {
       sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  // ── Clés API ─────────────────────────────────────────────────
+
+  async getApiKeys(req: Request, res: Response): Promise<void> {
+    try {
+      const keys = await smsService.getApiKeys(req.tenantId!)
+      sendSuccess(res, keys)
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  async createApiKey(req: Request, res: Response): Promise<void> {
+    try {
+      const parsed = z.object({
+        name:   z.string().min(1, 'Nom requis').max(100),
+        module: z.enum(['sms', 'email', 'whatsapp', 'all']).optional().default('sms'),
+      }).safeParse(req.body)
+      if (!parsed.success) {
+        sendError(res, 422, 'VALIDATION_ERROR', parsed.error.errors[0].message); return
+      }
+      const result = await smsService.createApiKey(parsed.data, req.tenantId!, req.user!.id)
+      // La clé brute n'est retournée qu'une seule fois à la création
+      sendSuccess(res, { ...result.key, raw_key: result.rawKey }, 'Clé API créée — conservez-la, elle ne sera plus affichée', 201)
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  async deleteApiKey(req: Request, res: Response): Promise<void> {
+    try {
+      await smsService.deleteApiKey(Number(req.params.id), req.tenantId!)
+      sendSuccess(res, null, 'Clé API supprimée')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur serveur'
+      sendError(res, msg.includes('introuvable') ? 404 : 500, 'ERROR', msg)
     }
   },
 }

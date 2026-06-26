@@ -9,7 +9,7 @@ export const emailApi = createApi({
   tagTypes: ['EmailCampaign', 'EmailTemplate', 'EmailList'],
   endpoints: (builder) => ({
     getCampaigns: builder.query<PaginatedResponse<EmailCampaign>, PaginationQuery>({
-      query: (params) => ({ url: '/email/campaigns', method: 'GET', params }),
+      query: (params) => ({ url: '/email/campaigns', method: 'GET', params: params as Record<string, unknown> }),
       providesTags: ['EmailCampaign'],
     }),
 

@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Filter, Download, Info, Tag, CheckCircle2, Clock, BarChart2, X, Loader2, Trash2 } from 'lucide-react'
+import { Plus, Search, Info, Tag, CheckCircle2, Clock, BarChart2, X, Loader2, Trash2 } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
+import { useToast } from '../../../hooks/useToast'
 import type { SmsSenderId } from '../../../types/sms.types'
+import { motion } from 'framer-motion'
 
 const STATUT_STYLE: Record<string, { bg: string; text: string }> = {
   approved:         { bg: '#F0FDF4', text: '#16A34A' },
@@ -34,8 +36,7 @@ function AddSenderIdModal({ onClose, onCreated }: AddSenderIdModalProps) {
       await smsService.createSenderId(val)
       onCreated()
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
-      setError(msg ?? 'Erreur lors de la création')
+      setError(err instanceof Error ? err.message : 'Erreur lors de la création')
     } finally {
       setLoading(false)
     }
@@ -53,7 +54,7 @@ function AddSenderIdModal({ onClose, onCreated }: AddSenderIdModalProps) {
             <Info size={14} className="mt-0.5 shrink-0 text-[#3B82F6]" />
             <p className="text-[11px] text-[#1D4ED8] leading-relaxed">
               Max 11 caractères alphanumériques. Exemple : BIARGROUP, CLINIQUE, BANQUE.<br />
-              L'approbation prend 2-5 jours ouvrables via AfricasTalking.
+              La demande est examinée par l'équipe BIAR avant activation.
             </p>
           </div>
           <div>
@@ -86,7 +87,13 @@ function AddSenderIdModal({ onClose, onCreated }: AddSenderIdModalProps) {
 
 // ── Page principale ───────────────────────────────────────────
 
+const fadeUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+}
+
 export default function SmsIdentifiantsPage() {
+  const toast = useToast()
   const [emetteurs, setEmetteurs] = useState<SmsSenderId[]>([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
@@ -107,14 +114,17 @@ export default function SmsIdentifiantsPage() {
 
   useEffect(() => { fetchSenderIds() }, [fetchSenderIds])
 
-  async function handleDelete(id: number, name: string) {
-    if (!confirm(`Supprimer le Sender ID "${name}" ?`)) return
-    setDeleting(id)
+  async function handleDelete(e: SmsSenderId) {
+    const msg = e.status === 'approved'
+      ? `ATTENTION : "${e.sender_id}" est approuvé et actif.\nLe supprimer empêchera tout envoi futur avec cet identifiant.\n\nConfirmer la suppression ?`
+      : `Supprimer le Sender ID "${e.sender_id}" ?`
+    if (!confirm(msg)) return
+    setDeleting(e.id)
     try {
-      await smsService.deleteSenderId(id)
-      setEmetteurs(prev => prev.filter(e => e.id !== id))
+      await smsService.deleteSenderId(e.id)
+      setEmetteurs(prev => prev.filter(x => x.id !== e.id))
     } catch {
-      alert('Erreur lors de la suppression')
+      toast.error('Erreur lors de la suppression')
     } finally {
       setDeleting(null)
     }
@@ -130,7 +140,7 @@ export default function SmsIdentifiantsPage() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="px-6 py-5">
+      <motion.div className="px-6 py-5" variants={fadeUp} initial="initial" animate="animate">
 
         {/* Header */}
         <div className="mb-5 flex items-start justify-between">
@@ -151,7 +161,7 @@ export default function SmsIdentifiantsPage() {
           <Info size={16} className="mt-0.5 shrink-0 text-[#3B82F6]" />
           <p className="text-[12px] text-[#1D4ED8] leading-relaxed">
             Le Sender ID (ou OADC) est le nom d'expéditeur qui apparaît sur le téléphone du destinataire.
-            Il peut contenir jusqu'à 11 caractères alphanumériques. L'approbation peut prendre 2-5 jours ouvrables selon les opérateurs.
+            Il peut contenir jusqu'à 11 caractères alphanumériques. Une fois approuvé par l'équipe BIAR, il est actif immédiatement.
           </p>
         </div>
 
@@ -177,16 +187,12 @@ export default function SmsIdentifiantsPage() {
         <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
           <div className="flex items-center justify-between border-b border-gray-50 px-5 py-3">
             <h3 className="text-[14px] font-bold text-[#1F2937]">Liste des Émetteurs</h3>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 rounded-xl bg-[#FFEEE6] px-3 py-2 ring-1 ring-orange-200">
-                <Search size={13} className="text-orange-300" />
-                <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Rechercher..."
-                  className="w-32 bg-transparent text-[11px] text-[#1F2937] outline-none placeholder-orange-300"
-                />
-              </div>
-              <button className="rounded-lg border border-gray-200 p-2 hover:bg-gray-50"><Filter size={13} className="text-gray-500" /></button>
-              <button className="rounded-lg border border-gray-200 p-2 hover:bg-gray-50"><Download size={13} className="text-gray-500" /></button>
+            <div className="flex items-center gap-2 rounded-xl bg-[#FFEEE6] px-3 py-2 ring-1 ring-orange-200">
+              <Search size={13} className="text-orange-300" />
+              <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Rechercher..."
+                className="w-32 bg-transparent text-[11px] text-[#1F2937] outline-none placeholder-orange-300"
+              />
             </div>
           </div>
 
@@ -195,57 +201,51 @@ export default function SmsIdentifiantsPage() {
               <thead>
                 <tr className="border-b border-gray-50 bg-gray-50/60">
                   <th className="px-4 py-2.5 text-left"><input type="checkbox" className="rounded" /></th>
-                  {["Sender ID", 'Statut', 'Pays autorisés', 'Créé le', 'Approuvé le', 'Actions'].map(h => (
+                  {['Sender ID', 'Statut', 'Créé le', 'Approuvé le', 'Actions'].map(h => (
                     <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading && (
-                  <tr><td colSpan={7} className="py-10 text-center">
+                  <tr><td colSpan={6} className="py-10 text-center">
                     <Loader2 size={18} className="mx-auto animate-spin text-gray-300" />
                   </td></tr>
                 )}
                 {!loading && filtered.length === 0 && (
-                  <tr><td colSpan={7} className="py-10 text-center text-[12px] text-gray-400">
+                  <tr><td colSpan={6} className="py-10 text-center text-[12px] text-gray-400">
                     {search ? 'Aucun émetteur trouvé' : 'Aucun Sender ID — cliquez sur "Ajouter"'}
                   </td></tr>
                 )}
-                {!loading && filtered.map(e => {
-                  const ss = STATUT_STYLE[e.status] ?? { bg: '#F9FAFB', text: '#6B7280' }
-                  const pays = e.country_codes ? (() => {
-                    try { return (JSON.parse(e.country_codes) as string[]).join(' ') } catch { return e.country_codes }
-                  })() : '—'
+                {!loading && filtered.map(sid => {
+                  const ss = STATUT_STYLE[sid.status] ?? { bg: '#F9FAFB', text: '#6B7280' }
                   return (
-                    <tr key={e.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                    <tr key={sid.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       <td className="px-4 py-3"><input type="checkbox" className="rounded" /></td>
                       <td className="px-4 py-3">
                         <span className="rounded-lg bg-[#FFEEE6] px-3 py-1.5 text-[12px] font-bold text-[#F4511E]">
-                          {e.sender_id}
+                          {sid.sender_id}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
                           style={{ backgroundColor: ss.bg, color: ss.text }}>
-                          ● {STATUT_LABEL[e.status] ?? e.status}
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ss.text }} />
+                          {STATUT_LABEL[sid.status] ?? sid.status}
                         </span>
-                        {e.rejection_reason && (
-                          <p className="mt-0.5 text-[10px] text-red-400">{e.rejection_reason}</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-[11px] text-gray-600">{pays}</td>
-                      <td className="px-4 py-3 text-[11px] text-gray-500">
-                        {new Date(e.created_at).toLocaleDateString('fr-FR')}
                       </td>
                       <td className="px-4 py-3 text-[11px] text-gray-500">
-                        {e.approved_at ? new Date(e.approved_at).toLocaleDateString('fr-FR') : '—'}
+                        {new Date(sid.created_at).toLocaleDateString('fr-FR')}
+                      </td>
+                      <td className="px-4 py-3 text-[11px] text-gray-500">
+                        {sid.approved_at ? new Date(sid.approved_at).toLocaleDateString('fr-FR') : '—'}
                       </td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={() => handleDelete(e.id, e.sender_id)}
-                          disabled={deleting === e.id}
+                          onClick={() => handleDelete(sid)}
+                          disabled={deleting === sid.id}
                           className="flex items-center gap-1 rounded p-1.5 text-[#EF4444] hover:bg-red-50 transition-colors text-[11px] font-medium">
-                          {deleting === e.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                          {deleting === sid.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                           Suppr.
                         </button>
                       </td>
@@ -257,7 +257,7 @@ export default function SmsIdentifiantsPage() {
           </div>
         </div>
 
-      </div>
+      </motion.div>
 
       {showModal && (
         <AddSenderIdModal

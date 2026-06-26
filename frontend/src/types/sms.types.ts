@@ -19,6 +19,8 @@ export type ScheduledStatus =
 
 // ── Campagnes (colonnes DB snake_case) ───────────────────────
 
+export type CampaignType = 'promotional' | 'transactional' | 'otp' | 'notification'
+
 export interface SmsCampaign {
   id: number
   tenant_id: number
@@ -26,6 +28,7 @@ export interface SmsCampaign {
   name: string
   message: string
   sender_id: string
+  campaign_type: CampaignType
   status: CampaignStatus
   scheduled_at: string | null
   sent_at: string | null
@@ -80,13 +83,10 @@ export interface SmsSenderId {
   tenant_id: number
   sender_id: string          // max 11 chars alphanumériques
   status: SenderIdStatus
-  country_codes: string | null  // JSON array ou CSV
-  approved_by: number | null
   approved_at: string | null
-  rejection_reason: string | null
+  created_by: number | null
   created_at: string
   updated_at: string
-  deleted_at: string | null
 }
 
 // ── Messages Programmés ───────────────────────────────────────
@@ -95,13 +95,16 @@ export interface SmsScheduled {
   id: number
   tenant_id: number
   created_by: number | null
-  name: string
+  titre: string          // colonne DB = titre
   message: string
   sender_id: string
   list_id: number | null
-  send_at: string
+  recipient_count: number
+  scheduled_at: string   // colonne DB = scheduled_at (UTC)
+  timezone: string
   status: ScheduledStatus
-  campaign_id: number | null  // créé après dispatch
+  campaign_id: number | null
+  dispatched_at: string | null
   created_at: string
   updated_at: string
 }
@@ -144,7 +147,7 @@ export interface SmsShortLink {
   clicks: number
   created_by: number | null
   expires_at: string | null
-  active: boolean
+  // pas de colonne "active" en DB — calculé côté frontend : !expires_at || expires_at > now
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -163,15 +166,31 @@ export interface CrmContact {
 // ── Analytics overview ────────────────────────────────────────
 
 export interface SmsAnalyticsOverview {
-  totalCampaigns: number
   totalSent: number
   totalDelivered: number
   totalFailed: number
-  totalUndelivered: number
   deliveryRate: number
+  activeCampaigns: number
   totalContacts: number
   totalLists: number
-  totalSenderIds: number
+}
+
+// ── Clés API ─────────────────────────────────────────────────
+
+export interface SmsApiKey {
+  id: number
+  tenant_id: number
+  created_by: number | null
+  name: string
+  key_preview: string
+  module: 'sms' | 'email' | 'whatsapp' | 'all'
+  is_active: boolean
+  requests_count: number
+  last_used_at: string | null
+  expires_at: string | null
+  created_at: string
+  // Présent uniquement à la création (retourné une seule fois)
+  raw_key?: string
 }
 
 // ── Payloads (envoi vers l'API) ───────────────────────────────
@@ -182,6 +201,7 @@ export interface CreateCampaignPayload {
   senderId: string
   listIds: number[]
   scheduledAt?: string
+  campaignType?: CampaignType
 }
 
 export interface UpdateCampaignPayload {
@@ -209,5 +229,6 @@ export interface AddContactPayload {
 
 export interface AddContactsResult {
   added: number
-  skipped: number
+  invalid: string[]
+  skipped?: number
 }
