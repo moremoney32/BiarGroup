@@ -494,10 +494,17 @@ export const smsService = {
       "SELECT id, campaign_id, tenant_id, status, sent_at FROM sms_messages WHERE at_message_id = ?",
       [infobipMessageId]
     )
-    if (rows.length === 0) return
+    if (rows.length === 0) {
+      console.warn(`[DLR] ⚠ Aucun message trouvé pour at_message_id="${infobipMessageId}"`)
+      return
+    }
 
     const msg = rows[0]
-    if (msg.status !== 'sent') return
+    console.log(`[DLR] Message #${msg.id} trouvé — statut actuel="${msg.status}" → nouveau statut Infobip="${statusGroupName}"`)
+    if (msg.status !== 'sent') {
+      console.warn(`[DLR] ⚠ Ignoré — statut local déjà "${msg.status}" (attendu "sent")`)
+      return
+    }
     if (statusGroupName === 'PENDING' || statusGroupName === 'SENT') return
 
     const isDelivered = statusGroupName === 'DELIVERED'

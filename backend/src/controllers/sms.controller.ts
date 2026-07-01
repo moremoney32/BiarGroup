@@ -215,18 +215,25 @@ export const smsController = {
    */
   async handleDlr(req: Request, res: Response): Promise<void> {
     try {
+      console.log(`[DLR] ▶ Requête reçue depuis ${req.ip}`)
+
       const token = req.query.token as string
       if (token !== process.env.INFOBIP_DLR_SECRET) {
+        console.warn(`[DLR] ❌ Token invalide (reçu longueur=${token?.length ?? 0})`)
         res.status(401).send('Unauthorized'); return
       }
 
       const payload = req.body as InfobipDlrPayload
       if (!payload.results || !Array.isArray(payload.results)) {
+        console.warn('[DLR] ❌ Body sans results[] :', JSON.stringify(req.body))
         res.status(400).send('Missing results'); return
       }
 
+      console.log(`[DLR] ✅ Token valide — ${payload.results.length} résultat(s)`)
+
       for (const result of payload.results) {
         if (!result.messageId) continue
+        console.log(`[DLR]   messageId=${result.messageId} status=${result.status?.groupName}`)
         const failureReason = result.error?.groupName !== 'OK' ? result.error?.groupName : undefined
         await smsService.handleDlr(result.messageId, result.status.groupName, failureReason, {
           mccMnc:    result.mccMnc,
