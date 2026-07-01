@@ -1602,6 +1602,7 @@ export const smsService = {
     topCampaigns: Array<{ name: string; sent: number; delivered: number; openRate: number; clickRate: number; revenue: number }>
   }> {
     const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+    const periodDays = opts.period === '7j' ? 7 : opts.period === '90j' ? 90 : 30
 
     const [byDayRows] = await pool.execute<RowDataPacket[]>(
       `SELECT
@@ -1611,9 +1612,9 @@ export const smsService = {
          SUM(CASE WHEN status IN ('undelivered','failed') THEN 1 ELSE 0 END) as failed
        FROM sms_messages
        WHERE tenant_id = ? AND deleted_at IS NULL
-         AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+         AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
        GROUP BY dow ORDER BY dow`,
-      [tenantId]
+      [tenantId, periodDays]
     )
 
     // MySQL DAYOFWEEK: 1=Sun,2=Mon,...,7=Sat → on réindexe
@@ -1672,8 +1673,11 @@ export const smsService = {
 
     // Distribution géographique depuis préfixe téléphone
     const [phoneRows] = await pool.execute<RowDataPacket[]>(
-      `SELECT phone FROM sms_messages WHERE tenant_id = ? AND deleted_at IS NULL LIMIT 5000`,
-      [tenantId]
+      `SELECT phone FROM sms_messages
+       WHERE tenant_id = ? AND deleted_at IS NULL
+         AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+       LIMIT 5000`,
+      [tenantId, periodDays]
     )
     const countryCount: Record<string, number> = {}
     for (const r of phoneRows as RowDataPacket[]) {
@@ -1921,28 +1925,30 @@ export const smsService = {
     segmentation: Array<{ segment: string; clients: number; engagement: number }>
     byHour: Array<{ hour: number; count: number }>
   }> {
+    const periodDays = opts.period === '7j' ? 7 : opts.period === '90j' ? 90 : 30
+
     const [[kpiRow]] = await pool.execute<RowDataPacket[]>(
       `SELECT
          COUNT(DISTINCT phone) as total,
-         COUNT(DISTINCT CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN phone END) as active,
+         COUNT(DISTINCT CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL ? DAY) THEN phone END) as active,
          COUNT(DISTINCT CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN phone END) as newC
        FROM sms_messages WHERE tenant_id = ? AND deleted_at IS NULL`,
-      [tenantId]
+      [periodDays, tenantId]
     )
 
     const total  = Number(kpiRow.total)  || 0
     const active = Number(kpiRow.active) || 0
     const newC   = Number(kpiRow.newC)   || 0
 
-    // Tendances sur 30 jours
+    // Tendances sur la période sélectionnée
     const [trendRows] = await pool.execute<RowDataPacket[]>(
       `SELECT DATE(created_at) as d, COUNT(DISTINCT phone) as phones,
               SUM(CASE WHEN status='delivered' THEN 1 ELSE 0 END) as del,
               COUNT(*) as total
        FROM sms_messages WHERE tenant_id = ? AND deleted_at IS NULL
-         AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+         AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
        GROUP BY d ORDER BY d`,
-      [tenantId]
+      [tenantId, periodDays]
     )
     const trends = (trendRows as RowDataPacket[]).map(r => ({
       date:       r.d as string,
