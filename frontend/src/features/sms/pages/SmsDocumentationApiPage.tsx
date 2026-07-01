@@ -10,7 +10,9 @@ import { useToast } from '../../../hooks/useToast'
 import type { SmsApiKey, SmsAnalyticsOverview } from '../../../types/sms.types'
 import { motion } from 'framer-motion'
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'https://api.biargroup.sbs/api/v1'
+const API_BASE = (import.meta.env.VITE_API_URL as string ?? '/api/v1').startsWith('http')
+  ? (import.meta.env.VITE_API_URL as string)
+  : `${window.location.origin}${import.meta.env.VITE_API_URL ?? '/api/v1'}`
 
 interface Endpoint {
   method: 'POST' | 'GET' | 'DELETE'

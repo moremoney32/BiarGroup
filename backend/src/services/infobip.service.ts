@@ -90,7 +90,7 @@ export const infobipService = {
           content: { text: params.message },
           options: {
             delivery: {
-              notifyUrl: `https://api.biargroup.sbs/api/v1/sms/dlr?token=${process.env.INFOBIP_DLR_SECRET}`,
+              notifyUrl: `${(process.env.API_BASE_URL ?? 'https://biargroup.sbs').replace(/\/+$/, '')}/api/v1/sms/dlr?token=${process.env.INFOBIP_DLR_SECRET}`,
               notifyContentType: 'application/json',
             },
           },
