@@ -88,12 +88,8 @@ export const infobipService = {
           destinations: phones.map(p => ({ to: p.replace(/^\+/, '') })),
           sender: params.from || process.env.INFOBIP_SENDER || 'BIAR',
           content: { text: params.message },
-          options: {
-            delivery: {
-              notifyUrl: `${(process.env.API_BASE_URL ?? 'https://biargroup.sbs').replace(/\/+$/, '')}/api/v1/sms/dlr?token=${process.env.INFOBIP_DLR_SECRET}`,
-              notifyContentType: 'application/json',
-            },
-          },
+          notifyUrl: `${(process.env.API_BASE_URL ?? 'https://biargroup.sbs').replace(/\/+$/, '')}/api/v1/sms/dlr?token=${process.env.INFOBIP_DLR_SECRET}`,
+          notifyContentType: 'application/json',
         }],
       },
       {
