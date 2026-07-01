@@ -228,7 +228,14 @@ export const smsController = {
       for (const result of payload.results) {
         if (!result.messageId) continue
         const failureReason = result.error?.groupName !== 'OK' ? result.error?.groupName : undefined
-        await smsService.handleDlr(result.messageId, result.status.groupName, failureReason)
+        await smsService.handleDlr(result.messageId, result.status.groupName, failureReason, {
+          mccMnc:    result.mccMnc,
+          errorCode: result.error?.id,
+          errorName: result.error?.name,
+          doneAt:    result.doneAt,
+          sentAt:    result.sentAt,
+          cost:      result.price?.pricePerMessage,
+        })
       }
 
       // Infobip attend toujours un 200 — sinon il retente le webhook
@@ -657,6 +664,110 @@ export const smsController = {
     try {
       const stats = await smsService.getOverviewStats(req.tenantId!)
       sendSuccess(res, stats)
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  async getAnalyticsKpis(req: Request, res: Response): Promise<void> {
+    try {
+      const kpis = await smsService.getAnalyticsKpis(req.tenantId!)
+      sendSuccess(res, kpis)
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  async getRapportsSms(req: Request, res: Response): Promise<void> {
+    try {
+      const data = await smsService.getRapportsSms(req.tenantId!, {
+        period: req.query.period as string | undefined,
+      })
+      sendSuccess(res, data)
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  async getHistoriqueSms(req: Request, res: Response): Promise<void> {
+    try {
+      const { page, limit } = getPage(req)
+      const result = await smsService.getHistoriqueSms(req.tenantId!, {
+        page, limit,
+        status: req.query.status as string | undefined,
+        search: req.query.search as string | undefined,
+        from:   req.query.from   as string | undefined,
+        to:     req.query.to     as string | undefined,
+      })
+      sendSuccess(res, result.messages, 'Historique récupéré', 200, {
+        page, perPage: limit, total: result.total,
+        lastPage: Math.ceil(result.total / limit),
+      })
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  async getRapportTransactions(req: Request, res: Response): Promise<void> {
+    try {
+      const data = await smsService.getRapportTransactions(req.tenantId!)
+      sendSuccess(res, data)
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  async getRapportDlr(req: Request, res: Response): Promise<void> {
+    try {
+      const { page, limit } = getPage(req)
+      const data = await smsService.getRapportDlr(req.tenantId!, {
+        page, limit,
+        status: req.query.status as string | undefined,
+        search: req.query.search as string | undefined,
+      })
+      sendSuccess(res, data)
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  async getTraficClient(req: Request, res: Response): Promise<void> {
+    try {
+      const data = await smsService.getTraficClient(req.tenantId!, {
+        period: req.query.period as string | undefined,
+      })
+      sendSuccess(res, data)
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  async getTarifsEtCouverture(_req: Request, res: Response): Promise<void> {
+    try {
+      const data = smsService.getTarifsEtCouverture()
+      sendSuccess(res, data)
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  async getCreditsCompte(req: Request, res: Response): Promise<void> {
+    try {
+      const data = await smsService.getCreditsCompte(req.tenantId!)
+      sendSuccess(res, data)
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
+  async hlrLookup(req: Request, res: Response): Promise<void> {
+    try {
+      const parsed = z.object({ phone: z.string().min(7) }).safeParse(req.body)
+      if (!parsed.success) {
+        sendError(res, 422, 'VALIDATION_ERROR', parsed.error.errors[0].message); return
+      }
+      const result = await smsService.hlrLookup(parsed.data.phone)
+      sendSuccess(res, result)
     } catch (err) {
       sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
     }

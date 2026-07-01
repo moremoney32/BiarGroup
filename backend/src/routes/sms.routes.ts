@@ -98,7 +98,20 @@ router.delete('/links/:id',    clientAndUp, smsController.deleteShortLink)
 router.get('/links/:id/stats', smsController.getShortLinkStats)
 
 // ── Analytics ────────────────────────────────────────────────
-router.get('/analytics/overview', smsController.getOverviewStats)
+router.get('/analytics/overview',      smsController.getOverviewStats)
+router.get('/analytics/kpis',          smsController.getAnalyticsKpis)
+router.get('/analytics/rapports',      smsController.getRapportsSms)
+router.get('/analytics/historique',    smsController.getHistoriqueSms)
+router.get('/analytics/transactions',  smsController.getRapportTransactions)
+router.get('/analytics/dlr',           smsController.getRapportDlr)
+router.get('/analytics/trafic-client', smsController.getTraficClient)
+
+// ── Outils SMS ────────────────────────────────────────────────
+router.get('/outils/tarifs', smsController.getTarifsEtCouverture)
+
+// ── SMS Technique ─────────────────────────────────────────────
+router.get('/technique/credits',          clientAndUp, smsController.getCreditsCompte)
+router.post('/technique/hlr-lookup',      clientAndUp, smsController.hlrLookup)
 
 // ── Clés API ─────────────────────────────────────────────────
 router.get('/api-keys',        clientAndUp, smsController.getApiKeys)

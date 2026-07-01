@@ -15,6 +15,9 @@ export interface InfobipDlrPayload {
   results: Array<{
     messageId: string
     to: string
+    mccMnc?: string
+    sentAt?: string
+    doneAt?: string
     status: {
       groupId: number
       groupName: string
@@ -25,9 +28,14 @@ export interface InfobipDlrPayload {
     error: {
       groupId: number
       groupName: string
+      id?: number
+      name?: string
       permanent: boolean
     }
-    doneAt?: string
+    price?: {
+      pricePerMessage: number
+      currency: string
+    }
   }>
 }
 

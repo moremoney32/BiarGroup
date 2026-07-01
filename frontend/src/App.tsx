@@ -33,6 +33,14 @@ const SmsMessagesRcsPage = lazy(() => import('./features/sms/pages/SmsMessagesRc
 const SmsConfigurationRcsPage = lazy(() => import('./features/sms/pages/SmsConfigurationRcsPage'))
 const SmsReducteurUrlPage = lazy(() => import('./features/sms/pages/SmsReducteurUrlPage'))
 const SmsDocumentationApiPage = lazy(() => import('./features/sms/pages/SmsDocumentationApiPage'))
+const SmsRapportsPage = lazy(() => import('./features/sms/pages/SmsRapportsPage'))
+const SmsHistoriquePage = lazy(() => import('./features/sms/pages/SmsHistoriquePage'))
+const SmsRapportTransactionsPage = lazy(() => import('./features/sms/pages/SmsRapportTransactionsPage'))
+const SmsRapportDlrPage = lazy(() => import('./features/sms/pages/SmsRapportDlrPage'))
+const SmsTraficClientPage = lazy(() => import('./features/sms/pages/SmsTraficClientPage'))
+const SmsTarifsCouverturePage = lazy(() => import('./features/sms/pages/SmsTarifsCouverturePage'))
+const SmsCreditsComptePage = lazy(() => import('./features/sms/pages/SmsCreditsComptePage'))
+const SmsHlrLookupPage = lazy(() => import('./features/sms/pages/SmsHlrLookupPage'))
 const EmailPage = lazy(() => import('./features/email/pages/EmailPage'))
 const CampagnesEmailPage = lazy(() => import('./features/email/pages/CampagnesEmailPage'))
 const EditeurEmailPage = lazy(() => import('./features/email/pages/EditeurEmailPage'))
@@ -125,7 +133,15 @@ export default function App() {
               <Route path="rcs"               element={<SmsMessagesRcsPage />} />
               <Route path="configuration-rcs" element={<SmsConfigurationRcsPage />} />
               <Route path="reducteur-url"     element={<SmsReducteurUrlPage />} />
-              <Route path="documentation-api" element={<SmsDocumentationApiPage />} />
+              <Route path="documentation-api"    element={<SmsDocumentationApiPage />} />
+              <Route path="analytics-rapports"   element={<SmsRapportsPage />} />
+              <Route path="analytics-historique" element={<SmsHistoriquePage />} />
+              <Route path="analytics-transactions" element={<SmsRapportTransactionsPage />} />
+              <Route path="analytics-dlr"        element={<SmsRapportDlrPage />} />
+              <Route path="trafic-client"        element={<SmsTraficClientPage />} />
+              <Route path="tarifs-couverture"    element={<SmsTarifsCouverturePage />} />
+              <Route path="credits"              element={<SmsCreditsComptePage />} />
+              <Route path="hlr-lookup"           element={<SmsHlrLookupPage />} />
             </Route>
             <Route path="email" element={<EmailPage />}>
               <Route index element={<Navigate to="/app/email/campagnes" replace />} />
