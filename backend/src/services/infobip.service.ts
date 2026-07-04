@@ -113,6 +113,29 @@ export const infobipService = {
     }))
   },
 
+  /**
+   * Récupère les rapports de livraison en attente (polling — plan B du webhook notifyUrl).
+   * ⚠ Endpoint "consommant" : chaque rapport n'est retourné qu'UNE SEULE fois par Infobip.
+   * Il faut donc impérativement le traiter (handleDlr) dans la foulée.
+   */
+  async getDeliveryReports(limit = 250): Promise<InfobipDlrPayload['results']> {
+    const { apiKey, baseUrl } = getConfig()
+
+    const { data } = await axios.get<InfobipDlrPayload>(
+      `https://${baseUrl}/sms/1/reports`,
+      {
+        params: { limit },
+        headers: {
+          Authorization: `App ${apiKey}`,
+          Accept: 'application/json',
+        },
+        timeout: 30_000,
+      }
+    )
+
+    return data.results ?? []
+  },
+
   isConfigured(): boolean {
     return Boolean(process.env.INFOBIP_API_KEY && process.env.INFOBIP_BASE_URL)
   },

@@ -222,6 +222,28 @@ export default function SmsDocumentationApiPage() {
   const [activeEndpoint, setEndpoint] = useState(0)
   const [codeTab, setCodeTab]         = useState<CodeTab>('curl')
 
+  // IP Whitelist — configuration locale en attendant l'application côté backend
+  const [ipList, setIpList] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('sms_api_ip_whitelist') ?? '[]') } catch { return [] }
+  })
+  const [newIp, setNewIp] = useState('')
+
+  function addIp() {
+    const ip = newIp.trim()
+    if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) { toast.error('Adresse IP invalide (ex: 192.168.1.1)'); return }
+    if (ipList.includes(ip)) { toast.error('Cette IP est déjà dans la liste'); return }
+    const next = [...ipList, ip]
+    setIpList(next)
+    localStorage.setItem('sms_api_ip_whitelist', JSON.stringify(next))
+    setNewIp('')
+  }
+
+  function removeIp(ip: string) {
+    const next = ipList.filter(i => i !== ip)
+    setIpList(next)
+    localStorage.setItem('sms_api_ip_whitelist', JSON.stringify(next))
+  }
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
@@ -281,6 +303,23 @@ export default function SmsDocumentationApiPage() {
 
   const activeKeys    = keys.filter(k => k.is_active).length
   const totalRequests = keys.reduce((s, k) => s + k.requests_count, 0)
+  const firstKey      = keys.find(k => k.is_active) ?? keys[0] ?? null
+  const accountId     = firstKey ? `ACC_BIAR_${new Date(firstKey.created_at).getFullYear()}_${String(firstKey.tenant_id).padStart(3, '0')}` : '—'
+
+  // Télécharge la doc des endpoints en fichier texte
+  function downloadGuide() {
+    const lines = ENDPOINTS.map(e =>
+      `${e.method} ${e.title}\n${e.desc}\n${e.url}\n`
+    ).join('\n')
+    const guide = `BIAR ACTOR HUB — Guide d'intégration API SMS\n${'='.repeat(46)}\n\nAuthentification : header "Authorization: Bearer VOTRE_CLE_API"\nContent-Type : application/json\n\nENDPOINTS\n---------\n${lines}\nLimites de taux : 100 req/min · 5 000 req/heure · 50 000 req/jour\n`
+    const blob = new Blob([guide], { type: 'text/plain;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'guide-integration-api-sms.txt'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
   const ep = ENDPOINTS[activeEndpoint]
   const codeContent = codeTab === 'curl' ? ep.curl : codeTab === 'js' ? ep.js : ep.py
 
@@ -315,8 +354,9 @@ export default function SmsDocumentationApiPage() {
           {[
             { icon: Key,      bg: '#EFF6FF', color: '#3B82F6', label: 'Clés API actives',   value: loading ? '…' : String(activeKeys) },
             { icon: Activity, bg: '#F0FDF4', color: '#22C55E', label: 'Requêtes (30j)',      value: loading ? '…' : (totalRequests + (stats?.totalSent ?? 0)).toLocaleString('fr-FR') },
-            { icon: Zap,      bg: '#F5F3FF', color: '#8B5CF6', label: 'Uptime',              value: '99.9%' },
-            { icon: Shield,   bg: '#FFF7ED', color: '#F97316', label: 'IP Whitelist',        value: '0' },
+            // Uptime : nécessite un monitoring serveur — non affiché tant que non mesuré
+            { icon: Zap,      bg: '#F5F3FF', color: '#8B5CF6', label: 'Uptime',              value: '—' },
+            { icon: Shield,   bg: '#FFF7ED', color: '#F97316', label: 'IP Whitelist',        value: String(ipList.length) },
           ].map(({ icon: Icon, bg, color, label, value }) => (
             <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
@@ -326,6 +366,122 @@ export default function SmsDocumentationApiPage() {
               <p className="mt-0.5 text-[11px] text-gray-500">{label}</p>
             </div>
           ))}
+        </div>
+
+        {/* Carte compte (maquette) */}
+        <div className="mb-5 rounded-2xl border border-gray-100 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full border-4 border-[#F4511E]">
+            <Key size={30} className="text-[#F4511E]" />
+          </div>
+          <p className="text-[24px] font-bold text-[#F4511E]">{accountId}</p>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+            <button onClick={downloadGuide}
+              className="rounded-xl bg-[#EC4899] px-5 py-2.5 text-[13px] font-bold text-white hover:bg-[#db2777]">
+              Télécharger le guide d'intégration
+            </button>
+            <button disabled title="Bientôt disponible"
+              className="rounded-xl bg-[#8B5CF6] px-5 py-2.5 text-[13px] font-bold text-white opacity-60 cursor-not-allowed">
+              Changer le mot de passe API
+            </button>
+          </div>
+        </div>
+
+        {/* Identifiants API Complets (maquette) */}
+        <div className="mb-5 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 flex items-center gap-2 text-[15px] font-bold text-[#1F2937]">
+            <Key size={15} className="text-[#3B82F6]" /> Identifiants API Complets
+          </h2>
+          {[
+            { label: 'API Key (Clé publique)', value: firstKey ? (firstKey.raw_key ?? firstKey.key_preview) : 'Créez une clé API pour commencer', secret: true, id: 'full-key' },
+            { label: 'API Secret (Clé secrète)', value: firstKey ? 'Visible uniquement à la création de la clé' : '—', secret: true, id: 'full-secret' },
+            { label: 'Account ID', value: accountId, secret: false, id: 'full-account' },
+          ].map(({ label, value, secret, id }) => (
+            <div key={id} className="mb-4">
+              <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">{label}</label>
+              <div className="flex items-center gap-2">
+                <div className="flex flex-1 items-center gap-2 rounded-xl bg-[#E0F2FE] px-4 py-3">
+                  <code className="flex-1 truncate font-mono text-[12px] text-[#1F2937]">
+                    {secret && !visibleIds.has(-1) ? '•'.repeat(42) : value}
+                  </code>
+                  {secret && (
+                    <button onClick={() => toggleVisible(-1)} className="shrink-0 text-gray-400 hover:text-gray-600"
+                      aria-label="Afficher / masquer">
+                      {visibleIds.has(-1) ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  )}
+                </div>
+                <button onClick={() => copyText(value, id)}
+                  className="shrink-0 rounded-xl border border-gray-200 p-3 text-gray-500 hover:bg-gray-50"
+                  aria-label="Copier">
+                  {copied === id ? <CheckCircle2 size={14} className="text-[#22C55E]" /> : <Copy size={14} />}
+                </button>
+              </div>
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={() => { setCreatedKey(null); setShowCreate(true) }}
+              className="flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-4 py-2.5 text-[12px] font-bold text-white hover:bg-[#d9400f]">
+              <RefreshCw size={13} /> Régénérer les clés
+            </button>
+            <p className="flex items-center gap-1.5 text-[11px] text-gray-500">
+              ⚠️ La régénération invalidera vos anciennes clés
+            </p>
+          </div>
+        </div>
+
+        {/* Adresses IP Whitelist (maquette) */}
+        <div className="mb-5 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-start justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-[15px] font-bold text-[#1F2937]">
+                <Shield size={15} className="text-[#16A34A]" /> Adresses IP Whitelist
+              </h2>
+              <p className="mt-0.5 text-[11px] text-gray-400">Sécurisez l'accès à votre API en autorisant uniquement certaines IP</p>
+            </div>
+          </div>
+          <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">Nouvelle adresse IP</label>
+          <div className="mb-4 flex gap-2">
+            <input value={newIp} onChange={e => setNewIp(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') addIp() }}
+              placeholder="Entrez une adresse IP (ex: 192.168.1.1)"
+              className="flex-1 rounded-xl bg-[#E0F2FE] px-4 py-3 text-[12px] text-[#1F2937] outline-none placeholder-gray-400"
+            />
+            <button onClick={addIp}
+              className="rounded-xl bg-[#F4511E] px-5 py-3 text-[12px] font-bold text-white hover:bg-[#d9400f]">
+              Ajouter
+            </button>
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr className="bg-[#FFB59B]/60">
+                {['#', 'Adresse IP', 'Action'].map(h => (
+                  <th key={h} className="px-4 py-2.5 text-left text-[12px] font-bold text-[#1F2937]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ipList.length === 0 && (
+                <tr><td colSpan={3} className="py-6 text-center text-[12px] text-gray-400">
+                  Aucune IP — toutes les adresses sont autorisées
+                </td></tr>
+              )}
+              {ipList.map((ip, i) => (
+                <tr key={ip} className="border-b border-gray-50">
+                  <td className="px-4 py-3 text-[12px] text-gray-500">{i + 1}</td>
+                  <td className="px-4 py-3 font-mono text-[12px] font-semibold text-[#1F2937]">{ip}</td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => removeIp(ip)}
+                      className="rounded p-1.5 text-[#EF4444] hover:bg-red-50" aria-label={`Supprimer ${ip}`}>
+                      <Trash2 size={13} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-3 text-[10px] text-gray-400">
+            Le filtrage IP sera appliqué côté serveur prochainement — la liste est déjà enregistrée.
+          </p>
         </div>
 
         {/* Section clés API */}

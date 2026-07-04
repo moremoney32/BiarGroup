@@ -61,6 +61,7 @@ const createShortLinkSchema = z.object({
   url:           z.string().url('URL invalide'),
   title:         z.string().max(100).optional(),
   expiresInDays: z.number().int().min(1).max(365).optional(),
+  customCode:    z.string().regex(/^[a-zA-Z0-9_-]{3,30}$/, 'Code personnalisé invalide (3-30 caractères alphanumériques, - ou _)').optional(),
 })
 
 const addContactsSchema = z.object({

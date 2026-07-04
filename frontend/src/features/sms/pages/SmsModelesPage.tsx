@@ -9,6 +9,15 @@ import { motion } from 'framer-motion'
 
 const VARIABLES = ['{{name}}', '{{code}}', '{{date}}', '{{order_id}}', '{{prenom}}', '{{nom}}', '{{tel}}']
 
+// Catégorie déduite du contenu tant que le backend ne la stocke pas
+function inferCategory(body: string): { label: string; bg: string; color: string } {
+  const b = body.toLowerCase()
+  if (/(code|otp|vérification|verification)/.test(b)) return { label: 'security',      bg: '#FEF9C3', color: '#A16207' }
+  if (/(commande|confirm|livraison|reçu|recu)/.test(b)) return { label: 'transactional', bg: '#FFEEE6', color: '#F4511E' }
+  if (/(promo|offre|%|réduction|reduction|soldes)/.test(b)) return { label: 'marketing', bg: '#FFEEE6', color: '#F4511E' }
+  return { label: 'notification', bg: '#EFF6FF', color: '#2563EB' }
+}
+
 // ── Modal ─────────────────────────────────────────────────────
 
 interface ModalProps {
@@ -229,15 +238,18 @@ export default function SmsModelesPage() {
         {/* Grille */}
         {!loading && filtered.length > 0 && (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            {filtered.map(t => (
+            {filtered.map(t => {
+              const cat = inferCategory(t.body)
+              return (
               <div key={t.id} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
                 {/* Card header */}
                 <div className="mb-3 flex items-start justify-between">
                   <div>
                     <h3 className="text-[15px] font-bold text-[#1F2937]">{t.name}</h3>
-                    <p className="mt-0.5 text-[10px] text-gray-400">
-                      Créé le {new Date(t.created_at).toLocaleDateString('fr-FR')}
-                    </p>
+                    <span className="mt-1.5 inline-block rounded-md px-2 py-0.5 text-[10px] font-semibold"
+                      style={{ backgroundColor: cat.bg, color: cat.color }}>
+                      {cat.label}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button onClick={() => { setEditing(t); setModal(true) }}
@@ -262,7 +274,9 @@ export default function SmsModelesPage() {
 
                 {/* Footer */}
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-gray-400">{t.body.length} car. · ~{Math.ceil(t.body.length / 160)} segment(s)</span>
+                  <span className="text-[12px] text-gray-500">
+                    {((t as { usage_count?: number }).usage_count ?? 0).toLocaleString('fr-FR')} utilisations
+                  </span>
                   <button
                     onClick={() => navigate('/app/sms/masse', { state: { templateBody: t.body } })}
                     className="rounded-xl bg-[#F4511E] px-4 py-1.5 text-[12px] font-bold text-white hover:bg-[#d9400f] transition-colors">
@@ -270,7 +284,7 @@ export default function SmsModelesPage() {
                   </button>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
 

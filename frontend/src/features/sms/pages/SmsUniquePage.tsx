@@ -3,8 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { Send, Clock, Info, ChevronDown, Loader2, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
+import api from '../../../services/api'
 import type { SmsSenderId, SmsMessage } from '../../../types/sms.types'
 import { motion } from 'framer-motion'
+
+// Tarif par défaut si le pays n'est pas trouvé dans la grille
+const DEFAULT_PRICE_USD = 0.02
+
+interface TarifRow { pays: string; code: string; prixParSms: number }
 
 // GSM-7 charset
 const GSM7 = new Set(
@@ -119,6 +125,9 @@ export default function SmsUniquePage() {
   const [senderIds, setSenderIds]   = useState<SmsSenderId[]>([])
   const [loadingIds, setLoadingIds] = useState(true)
 
+  const [credits, setCredits]       = useState<number | null>(null)
+  const [tarifs, setTarifs]         = useState<TarifRow[]>([])
+
   const [history, setHistory]       = useState<SmsMessage[]>([])
   const [loadingHist, setLoadHist]  = useState(true)
   const [histPage, setHistPage]     = useState(1)
@@ -143,10 +152,23 @@ export default function SmsUniquePage() {
       .then(ids => setSenderIds(ids.filter(s => s.status === 'approved')))
       .catch(() => setSenderIds([]))
       .finally(() => setLoadingIds(false))
+    api.get<{ data: { balance: number } }>('/sms/technique/credits')
+      .then(r => setCredits(r.data.balance))
+      .catch(() => setCredits(null))
+    api.get<{ data: TarifRow[] }>('/sms/outils/tarifs')
+      .then(r => setTarifs(r.data))
+      .catch(() => setTarifs([]))
     fetchHistory(1)
   }, [fetchHistory])
 
   const sms = useMemo(() => calcSms(message), [message])
+
+  // Coût estimé : tarif du pays (préfixe) × segments
+  const estimatedCost = useMemo(() => {
+    const cleaned = phone.replace(/[\s-]/g, '')
+    const tarif = tarifs.find(t => cleaned.startsWith(t.code))
+    return sms.segs * (tarif?.prixParSms ?? DEFAULT_PRICE_USD)
+  }, [phone, tarifs, sms.segs])
 
   const handleSend = async () => {
     if (!phone.trim() || !message.trim()) return
@@ -203,7 +225,7 @@ export default function SmsUniquePage() {
                   type="tel"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  placeholder="+237 6XX XXX XXX"
+                  placeholder="+243 XXX XXX XXX"
                   className="w-full rounded-xl border-0 bg-[#FFEEE6] px-4 py-3 text-[13px] text-[#1F2937] placeholder-orange-300 outline-none ring-1 ring-orange-200 focus:ring-2 focus:ring-[#F4511E]/40"
                 />
               </div>
@@ -340,13 +362,13 @@ export default function SmsUniquePage() {
               <h2 className="mb-4 text-[14px] font-bold text-[#1F2937]">Statistiques d'envoi</h2>
               <div className="space-y-3">
                 <div className="flex items-center justify-between border-b border-gray-50 pb-3">
-                  <span className="text-[12px] text-gray-500">Sender ID actif</span>
-                  <span className="text-[13px] font-bold text-[#1F2937]">{senderId || '—'}</span>
+                  <span className="text-[12px] text-gray-500">Coût estimé</span>
+                  <span className="text-[13px] font-bold text-[#1F2937]">{estimatedCost.toFixed(2)} USD</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-gray-50 pb-3">
-                  <span className="text-[12px] text-gray-500">Segments SMS</span>
-                  <span className={`text-[13px] font-bold ${sms.segs > 1 ? 'text-orange-500' : 'text-[#1F2937]'}`}>
-                    {sms.segs} SMS
+                  <span className="text-[12px] text-gray-500">Crédits disponibles</span>
+                  <span className="text-[13px] font-bold text-[#16A34A]">
+                    {credits !== null ? credits.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) : '—'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Search, List, Users, BarChart2, Send, Loader2, Trash2, X, Download } from 'lucide-react'
+import { Plus, Search, List, Users, Send, Loader2, Trash2, X, Download, Star, MoreVertical, Activity, TrendingUp } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
 import { useToast } from '../../../hooks/useToast'
@@ -269,6 +269,8 @@ function ImportCrmModal({ onClose, onCreated }: ImportCrmModalProps) {
 
 // ── Page principale ───────────────────────────────────────────
 
+const FAV_KEY = 'sms_listes_favorites'
+
 export default function SmsGestionListesPage() {
   const toast = useToast()
   const [listes, setListes]       = useState<SmsContactList[]>([])
@@ -278,6 +280,19 @@ export default function SmsGestionListesPage() {
   const [showModal, setModal]     = useState(false)
   const [showImport, setImport]   = useState(false)
   const [deleting, setDeleting]   = useState<number | null>(null)
+  const [menuOpen, setMenuOpen]   = useState<number | null>(null)
+  const [activeCampaigns, setActiveCampaigns] = useState<number | null>(null)
+  const [favorites, setFavorites] = useState<number[]>(() => {
+    try { return JSON.parse(localStorage.getItem(FAV_KEY) ?? '[]') } catch { return [] }
+  })
+
+  function toggleFavorite(id: number) {
+    setFavorites(prev => {
+      const next = prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
+      localStorage.setItem(FAV_KEY, JSON.stringify(next))
+      return next
+    })
+  }
 
   const fetchListes = useCallback(async () => {
     setLoading(true); setError('')
@@ -291,7 +306,12 @@ export default function SmsGestionListesPage() {
     }
   }, [])
 
-  useEffect(() => { fetchListes() }, [fetchListes])
+  useEffect(() => {
+    fetchListes()
+    smsService.getAnalyticsOverview()
+      .then(ov => setActiveCampaigns(ov.activeCampaigns))
+      .catch(() => setActiveCampaigns(null))
+  }, [fetchListes])
 
   async function handleDelete(id: number) {
     if (!confirm('Supprimer cette liste ? Les contacts seront retirés.')) return
@@ -337,23 +357,26 @@ export default function SmsGestionListesPage() {
           </div>
         </motion.div>
 
-        {/* KPIs */}
+        {/* KPIs — cartes pleines couleurs (maquette) */}
         <motion.div
-          className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4"
+          className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
           variants={stagger} initial="initial" animate="animate"
         >
           {[
-            { icon: List,     bg: '#EFF6FF', color: '#3B82F6', label: 'Total Listes',   value: listes.length },
-            { icon: Users,    bg: '#F0FDF4', color: '#22C55E', label: 'Total Contacts', value: totalContacts.toLocaleString('fr-FR') },
-            { icon: Send,     bg: '#FFF7ED', color: '#F97316', label: 'Listes actives', value: listes.filter(l => !l.deleted_at).length },
-            { icon: BarChart2, bg: '#F5F3FF', color: '#8B5CF6', label: 'Contacts moy.', value: listes.length ? Math.round(totalContacts / listes.length).toLocaleString('fr-FR') : '0' },
-          ].map(({ icon: Icon, bg, color, label, value }) => (
-            <motion.div key={label} variants={fadeUp} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
-                <Icon size={14} style={{ color }} />
+            { icon: List,       gradient: 'linear-gradient(135deg, #3B82F6, #2563EB)', label: 'Total Listes',    value: String(listes.length) },
+            { icon: Users,      gradient: 'linear-gradient(135deg, #22C55E, #16A34A)', label: 'Total Contacts',  value: totalContacts.toLocaleString('fr-FR') },
+            { icon: Activity,   gradient: 'linear-gradient(135deg, #A855F7, #7C3AED)', label: 'Contacts Actifs', value: totalContacts.toLocaleString('fr-FR') },
+            { icon: Send,       gradient: 'linear-gradient(135deg, #F97316, #F4511E)', label: 'Campagnes',       value: activeCampaigns !== null ? String(activeCampaigns) : '—' },
+            { icon: TrendingUp, gradient: 'linear-gradient(135deg, #EC4899, #DB2777)', label: 'Engagement Moy.', value: '—' },
+          ].map(({ icon: Icon, gradient, label, value }) => (
+            <motion.div key={label} variants={fadeUp} className="rounded-2xl p-4 text-white shadow-sm" style={{ background: gradient }}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-[12px] text-white/85">{label}</p>
+                  <p className="mt-1 text-[22px] font-bold">{value}</p>
+                </div>
+                <Icon size={26} className="text-white/40" />
               </div>
-              <p className="text-[18px] font-bold text-[#1F2937]">{value}</p>
-              <p className="mt-0.5 text-[10px] text-gray-500">{label}</p>
             </motion.div>
           ))}
         </motion.div>
@@ -405,39 +428,58 @@ export default function SmsGestionListesPage() {
           >
             {filtered.map((l, idx) => {
               const pal = palette(idx)
+              const isFav = favorites.includes(l.id)
               return (
                 <motion.div key={l.id} variants={fadeUp} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
                   {/* Card header */}
                   <div className="mb-3 flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ backgroundColor: pal.iconBg }}>
-                        <List size={18} style={{ color: pal.iconColor }} />
-                      </div>
-                      <div>
-                        <p className="text-[14px] font-bold text-[#1F2937]">{l.name}</p>
-                        <p className="text-[11px] text-gray-500">{l.description || 'Aucune description'}</p>
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ backgroundColor: pal.iconBg }}>
+                      <List size={19} style={{ color: pal.iconColor }} />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => toggleFavorite(l.id)}
+                        aria-label={isFav ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                        className="rounded p-1 transition-colors hover:bg-yellow-50">
+                        <Star size={15}
+                          className={isFav ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'} />
+                      </button>
+                      <div className="relative">
+                        <button
+                          onClick={() => setMenuOpen(menuOpen === l.id ? null : l.id)}
+                          aria-label="Options de la liste"
+                          className="rounded p-1 text-gray-400 hover:bg-gray-100 transition-colors">
+                          {deleting === l.id
+                            ? <Loader2 size={15} className="animate-spin" />
+                            : <MoreVertical size={15} />}
+                        </button>
+                        {menuOpen === l.id && (
+                          <div className="absolute right-0 top-full z-20 mt-1 w-36 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg">
+                            <button
+                              onClick={() => { setMenuOpen(null); handleDelete(l.id) }}
+                              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-red-600 hover:bg-red-50">
+                              <Trash2 size={12} /> Supprimer
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleDelete(l.id)}
-                      disabled={deleting === l.id}
-                      className="rounded p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-                      {deleting === l.id
-                        ? <Loader2 size={14} className="animate-spin" />
-                        : <Trash2 size={14} />}
-                    </button>
                   </div>
 
-                  {/* Stats */}
+                  <p className="text-[15px] font-bold text-[#1F2937]">{l.name}</p>
+                  <p className="mb-3 mt-0.5 text-[12px] text-gray-500">{l.description || 'Aucune description'}</p>
+
+                  {/* Stats (maquette : Total / Actifs / Engagement / Campagnes) */}
                   <div className="mb-3 space-y-1.5">
                     {[
-                      { label: 'Total contacts', value: l.contact_count.toLocaleString('fr-FR'), color: '' },
-                      { label: 'Créée le',       value: formatDate(l.created_at),               color: '' },
-                      { label: 'Mise à jour',    value: formatDate(l.updated_at),               color: '' },
+                      { label: 'Total contacts', value: l.contact_count.toLocaleString('fr-FR'), color: '#1F2937' },
+                      { label: 'Actifs',         value: l.contact_count.toLocaleString('fr-FR'), color: '#16A34A' },
+                      { label: 'Engagement',     value: '—',                                     color: '#2563EB' },
+                      { label: 'Campagnes',      value: '—',                                     color: '#1F2937' },
                     ].map(({ label, value, color }) => (
                       <div key={label} className="flex items-center justify-between">
                         <span className="text-[11px] text-gray-500">{label}</span>
-                        <span className="text-[12px] font-semibold" style={{ color: color || '#1F2937' }}>{value}</span>
+                        <span className="text-[12px] font-semibold" style={{ color }}>{value}</span>
                       </div>
                     ))}
                   </div>
@@ -445,7 +487,7 @@ export default function SmsGestionListesPage() {
                   {/* Footer */}
                   <div className="flex items-center justify-between border-t border-gray-50 pt-3">
                     <span className="text-[10px] text-gray-400">
-                      {l.contact_count} contact{l.contact_count !== 1 ? 's' : ''}
+                      Modifié {formatDate(l.updated_at)}
                     </span>
                     <span className="rounded-full bg-[#F0FDF4] px-2 py-0.5 text-[10px] font-semibold text-[#16A34A]">
                       Active

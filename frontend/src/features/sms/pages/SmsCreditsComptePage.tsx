@@ -46,109 +46,59 @@ export default function SmsCreditsComptePage() {
     <motion.div {...fade} className="space-y-6 p-4 md:p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Crédits SMS</h1>
-          <p className="text-sm text-gray-500">Solde et historique de consommation de votre compte</p>
+          <h1 className="flex items-center gap-2 text-[22px] font-bold text-[#1F2937]">
+            <Wallet size={22} className="text-[#F4511E]" />
+            Crédits Compte
+          </h1>
+          <p className="mt-0.5 text-[13px] text-gray-500">Gérez vos crédits SMS et votre solde</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={load} disabled={loading}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <button
-            disabled
-            title="Disponible dès l'ouverture du module Billing"
-            className="flex items-center gap-1.5 rounded-lg bg-[#E91E8C] px-4 py-1.5 text-sm font-medium text-white opacity-60 cursor-not-allowed"
-          >
-            <Plus size={14} />
-            Recharger les crédits
-          </button>
-        </div>
+        <button onClick={load} disabled={loading}
+          className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        </button>
       </div>
 
       {loading && !data ? (
         <div className="flex h-48 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#E91E8C] border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#F4511E] border-t-transparent" />
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Solde principal */}
-          <div className="rounded-xl border-2 border-[#E91E8C]/20 bg-gradient-to-br from-[#E91E8C]/5 to-[#3B2F8F]/5 p-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#E91E8C]">
-                <Wallet size={20} className="text-white" />
+          {/* KPIs — cartes pleines couleurs (maquette) */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {[
+              { icon: Wallet,       gradient: 'linear-gradient(135deg, #22C55E, #15803D)', label: 'Solde Actuel',     value: data?.balance ?? 0 },
+              { icon: TrendingDown, gradient: 'linear-gradient(135deg, #3B82F6, #2563EB)', label: 'Utilisés ce mois', value: data?.usedThisMonth ?? 0 },
+              { icon: RefreshCw,    gradient: 'linear-gradient(135deg, #A855F7, #7C3AED)', label: 'Restants',          value: data?.remaining ?? 0 },
+            ].map(({ icon: Icon, gradient, label, value }) => (
+              <div key={label} className="rounded-2xl p-5 text-white shadow-sm" style={{ background: gradient }}>
+                <Icon size={26} className="mb-3 text-white/80" />
+                <p className="text-[13px] text-white/85">{label}</p>
+                <p className="mt-1 text-[26px] font-bold">${value.toFixed(2)}</p>
               </div>
-              <div>
-                <p className="text-sm text-gray-500">Solde disponible</p>
-                <p className="text-3xl font-bold text-gray-900">${(data?.balance ?? 0).toFixed(4)}</p>
-                <p className="text-xs text-gray-400">USD</p>
-              </div>
-            </div>
-
-            {/* Barre de consommation */}
-            <div className="mt-5">
-              <div className="mb-1 flex justify-between text-xs text-gray-500">
-                <span>Consommé ce mois</span>
-                <span>{balancePct}% restant</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-gray-200">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-[#E91E8C] to-[#3B2F8F] transition-all duration-500"
-                  style={{ width: `${100 - balancePct}%` }}
-                />
-              </div>
-              <div className="mt-2 flex justify-between text-xs">
-                <span className="text-red-600 font-medium">−${(data?.usedThisMonth ?? 0).toFixed(4)}</span>
-                <span className="text-green-600 font-medium">${(data?.remaining ?? 0).toFixed(4)} restants</span>
-              </div>
-            </div>
+            ))}
           </div>
 
-          {/* KPIs */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-gray-500">Utilisé ce mois</p>
-                <TrendingDown size={13} className="text-red-500" />
-              </div>
-              <p className="mt-2 text-lg font-bold text-gray-900">${(data?.usedThisMonth ?? 0).toFixed(4)}</p>
-            </div>
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-gray-500">Restants ce mois</p>
-                <DollarSign size={13} className="text-green-500" />
-              </div>
-              <p className="mt-2 text-lg font-bold text-gray-900">${(data?.remaining ?? 0).toFixed(4)}</p>
-            </div>
-            <div className="rounded-xl border border-gray-200 bg-white p-4 col-span-2 sm:col-span-1">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-gray-500">Transactions</p>
-                <RefreshCw size={13} className="text-[#3B2F8F]" />
-              </div>
-              <p className="mt-2 text-lg font-bold text-gray-900">{(data?.transactions.length ?? 0).toLocaleString()}</p>
-              <p className="text-xs text-gray-400">dernières opérations</p>
-            </div>
-          </div>
-
-          {/* Bannière recharge */}
-          <div className="rounded-xl border border-dashed border-[#E91E8C]/40 bg-[#E91E8C]/5 p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#E91E8C]/10">
-                <Plus size={14} className="text-[#E91E8C]" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700">Recharge de crédits SMS</p>
-                <p className="text-xs text-gray-500">
-                  La recharge sera disponible via le module Billing (Mobile Money, carte, virement).
-                  Contactez <span className="text-[#E91E8C]">commercial@biargroup.sbs</span> pour un rechargement manuel.
-                </p>
-              </div>
-            </div>
+          {/* Recharger votre compte (maquette) */}
+          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <h2 className="text-[15px] font-bold text-[#1F2937]">Recharger votre compte</h2>
+            <button
+              disabled
+              title="Disponible dès l'ouverture du module Billing (Mobile Money, carte, virement)"
+              className="mt-4 flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-5 py-3 text-[13px] font-bold text-white opacity-60 cursor-not-allowed"
+            >
+              <Plus size={14} /> Ajouter des crédits
+            </button>
+            <p className="mt-3 text-[11px] text-gray-400">
+              Contactez <span className="text-[#F4511E]">commercial@biargroup.sbs</span> pour un rechargement manuel
+              — {balancePct}% de votre solde mensuel restant.
+            </p>
           </div>
 
           {/* Historique transactions */}
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+          <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm">
             <div className="border-b border-gray-100 px-5 py-4">
-              <h2 className="text-sm font-semibold text-gray-700">Historique des 20 dernières transactions</h2>
+              <h2 className="text-[15px] font-bold text-[#1F2937]">Historique des transactions</h2>
             </div>
             {!data?.transactions.length ? (
               <div className="py-12 text-center">

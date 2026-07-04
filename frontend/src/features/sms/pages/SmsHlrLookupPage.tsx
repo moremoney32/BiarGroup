@@ -81,7 +81,7 @@ export default function SmsHlrLookupPage() {
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
                   placeholder="+243 81 234 5678"
-                  className="w-full rounded-lg border border-gray-200 py-2.5 pl-9 pr-3 text-sm text-gray-700 focus:border-[#E91E8C] focus:outline-none focus:ring-1 focus:ring-[#E91E8C]/20"
+                  className="w-full rounded-lg border border-gray-200 py-2.5 pl-9 pr-3 text-sm text-gray-700 focus:border-[#F4511E] focus:outline-none focus:ring-1 focus:ring-[#F4511E]/20"
                   disabled={loading}
                 />
               </div>
@@ -94,7 +94,7 @@ export default function SmsHlrLookupPage() {
               <button
                 type="submit"
                 disabled={loading || !phone.trim()}
-                className="flex items-center gap-2 rounded-lg bg-[#E91E8C] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#c9186e] disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg bg-[#F4511E] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#c9186e] disabled:opacity-50"
               >
                 {loading
                   ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />

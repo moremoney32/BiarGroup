@@ -221,7 +221,7 @@ export const smsService = {
   },
 
   async createShortLink(data: {
-    url: string; title?: string; expiresInDays?: number
+    url: string; title?: string; expiresInDays?: number; customCode?: string
   }): Promise<SmsShortLink> {
     const res = await api.post<ApiResp<SmsShortLink>>('/sms/links', data)
     return res.data
@@ -231,8 +231,8 @@ export const smsService = {
     await api.delete<ApiResp<null>>(`/sms/links/${id}`)
   },
 
-  async getShortLinkStats(id: number): Promise<{ total_clicks: number; clicks_by_day: { date: string; count: number }[] }> {
-    const res = await api.get<ApiResp<{ total_clicks: number; clicks_by_day: { date: string; count: number }[] }>>(`/sms/links/${id}/stats`)
+  async getShortLinkStats(id: number): Promise<{ total_clicks: number; unique_clicks: number; clicks_by_day: { date: string; count: number }[] }> {
+    const res = await api.get<ApiResp<{ total_clicks: number; unique_clicks: number; clicks_by_day: { date: string; count: number }[] }>>(`/sms/links/${id}/stats`)
     return res.data
   },
 

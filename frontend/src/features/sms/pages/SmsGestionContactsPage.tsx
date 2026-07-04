@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Plus, Search, Upload, Download,
   ChevronDown, X, List, Trash2,
   Send, AlertTriangle, Users, Loader2, PhoneOff, Phone,
   Database, CheckSquare, Square, CheckCircle2,
+  Filter, Pencil, Clock,
 } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
@@ -467,7 +469,9 @@ function pageNums(current: number, last: number): number[] {
 // ── Page principale ───────────────────────────────────────────
 
 export default function SmsGestionContactsPage() {
+  const navigate = useNavigate()
   const [listes, setListes]             = useState<SmsContactList[]>([])
+  const [deliveryRate, setDelivRate]    = useState<number | null>(null)
   const [contacts, setContacts]         = useState<SmsListContact[]>([])
   const [meta, setMeta]                 = useState<PaginationMeta | null>(null)
   const [selectedList, setSelList]      = useState<SmsContactList | null>(null)
@@ -513,6 +517,9 @@ export default function SmsGestionContactsPage() {
         fetchContacts(data[0].id, 1, '', 'all')
       }
     }).catch(() => {}).finally(() => setLoadingL(false))
+    smsService.getAnalyticsOverview()
+      .then(ov => setDelivRate(ov.deliveryRate))
+      .catch(() => setDelivRate(null))
   }, [fetchContacts])
 
   // Rechargement quand la page change (garde search + status courants)
@@ -609,138 +616,182 @@ export default function SmsGestionContactsPage() {
         {/* Header */}
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-[22px] font-bold text-[#1F2937]">
-              <span className="mr-2">🎯</span>Contacts SMS
+            <h1 className="flex items-center gap-2 text-[22px] font-bold text-[#1F2937]">
+              <Users size={22} className="text-[#F4511E]" />
+              Gestion des Contacts SMS
             </h1>
-            <p className="mt-0.5 text-[13px] text-gray-500">Listes de diffusion et contacts</p>
+            <p className="mt-0.5 text-[13px] text-gray-500">Gérez tous vos contacts SMS en un seul endroit</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => setCreateList(true)}
-              className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-[12px] font-semibold text-gray-700 hover:bg-gray-50">
-              <List size={13} /> Nouvelle liste
+            <button onClick={() => selectedList && setCrmModal(true)}
+              disabled={!selectedList}
+              className="flex items-center gap-1.5 rounded-xl bg-[#2563EB] px-4 py-2.5 text-[12px] font-bold text-white hover:bg-[#1d4ed8] disabled:opacity-40">
+              <Database size={13} /> Sync CRM
             </button>
             <button onClick={() => selectedList && setCsvModal(true)}
               disabled={!selectedList}
-              className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40">
-              <Upload size={13} /> Importer CSV
+              className="flex items-center gap-1.5 rounded-xl bg-[#16A34A] px-4 py-2.5 text-[12px] font-bold text-white hover:bg-[#15803d] disabled:opacity-40">
+              <Upload size={13} /> Importer
             </button>
-            <button onClick={handleExport}
-              disabled={!selectedList || contacts.length === 0}
-              title="Exporter la page courante en CSV"
-              className="flex items-center gap-1.5 rounded-xl border border-[#F4511E] px-3 py-2 text-[12px] font-semibold text-[#F4511E] hover:bg-orange-50 disabled:opacity-40">
-              <Download size={13} /> Exporter
+            <button onClick={() => selectedList && setModal(true)}
+              disabled={!selectedList}
+              className="flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-4 py-2.5 text-[12px] font-bold text-white hover:bg-[#d9400f] disabled:opacity-40">
+              <Plus size={13} /> Nouveau Contact
             </button>
-            {selectedList && (
-              <button onClick={() => setCrmModal(true)}
-                className="flex items-center gap-1.5 rounded-xl border border-[#3B82F6] px-3 py-2 text-[12px] font-semibold text-[#2563EB] hover:bg-blue-50">
-                <Database size={13} /> Depuis CRM
-              </button>
-            )}
-            {selectedList && (
-              <button onClick={() => setModal(true)}
-                className="flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-3 py-2 text-[12px] font-bold text-white hover:bg-[#d9400f]">
-                <Plus size={13} /> Ajouter contact
-              </button>
-            )}
           </div>
         </div>
 
-        {/* KPI Cards */}
+        {/* KPI Cards — pleines couleurs (maquette) */}
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             {
-              label: 'Total Contacts', icon: Users, color: '#3B82F6', bg: '#EFF6FF',
+              label: 'Total Contacts', icon: Users,
+              gradient: 'linear-gradient(135deg, #3B82F6, #2563EB)',
               value: totalContacts.toLocaleString('fr-FR'),
-              sub: `${listes.length} liste(s)`,
+              sub: `${listes.length} liste(s) de diffusion`,
             },
             {
-              label: 'Liste sélectionnée', icon: Phone, color: '#22C55E', bg: '#F0FDF4',
-              value: selectedList ? selectedList.contact_count.toLocaleString('fr-FR') : '—',
-              sub: selectedList?.name ?? 'Sélectionnez une liste',
+              label: 'Contacts Actifs', icon: Phone,
+              gradient: 'linear-gradient(135deg, #22C55E, #16A34A)',
+              value: totalContacts.toLocaleString('fr-FR'),
+              sub: 'Non désabonnés',
             },
             {
-              label: 'Listes', icon: List, color: '#F97316', bg: '#FFF7ED',
-              value: listes.length,
-              sub: 'Listes de diffusion',
+              label: 'Listes de Diffusion', icon: List,
+              gradient: 'linear-gradient(135deg, #A855F7, #7C3AED)',
+              value: String(listes.length),
+              sub: `${listes.filter(l => l.contact_count > 0).length} segments actifs`,
             },
             {
-              label: 'Résultats filtrés', icon: AlertTriangle, color: '#8B5CF6', bg: '#F5F3FF',
-              value: meta ? meta.total.toLocaleString('fr-FR') : '—',
-              sub: search || statutFilter !== 'all' ? 'Avec filtres actifs' : 'Tous les contacts',
+              label: 'Taux de Délivrabilité', icon: AlertTriangle,
+              gradient: 'linear-gradient(135deg, #F97316, #F4511E)',
+              value: deliveryRate !== null ? `${deliveryRate}%` : '—',
+              sub: 'Basé sur les DLR',
             },
-          ].map(({ label, value, sub, color, bg, icon: Icon }) => (
-            <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
-                <Icon size={16} style={{ color }} />
+          ].map(({ label, value, sub, gradient, icon: Icon }) => (
+            <div key={label} className="rounded-2xl p-4 text-white shadow-sm" style={{ background: gradient }}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-[12px] text-white/85">{label}</p>
+                  <p className="mt-1 text-[24px] font-bold">{value}</p>
+                </div>
+                <Icon size={30} className="text-white/40" />
               </div>
-              <p className="text-[20px] font-bold text-[#1F2937]">{value}</p>
-              <p className="mt-0.5 text-[11px] text-gray-500">{label}</p>
-              <p className="mt-0.5 text-[10px] truncate" style={{ color }}>{sub}</p>
+              <p className="mt-2 text-[11px] text-white/80">{sub}</p>
             </div>
           ))}
         </div>
 
-        {/* Filtres */}
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        {/* Barre de filtres */}
+        <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Recherche */}
+            <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+              <Search size={13} className="shrink-0 text-gray-400" />
+              <input type="text" value={search} onChange={e => handleSearchChange(e.target.value)}
+                placeholder="Rechercher par nom, téléphone, email..."
+                className="flex-1 bg-transparent text-[12px] text-[#1F2937] outline-none placeholder-gray-400"
+              />
+              {search && (
+                <button onClick={() => handleSearchChange('')} className="text-gray-300 hover:text-gray-500">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
 
-          {/* Sélecteur de liste */}
-          <div className="relative">
-            <button onClick={() => setListOpen(o => !o)}
-              className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50 min-w-[160px]">
-              <List size={12} className="text-[#F4511E]" />
-              <span className="flex-1 text-left">{selectedList?.name ?? 'Sélectionner une liste'}</span>
-              <ChevronDown size={12} className={`transition-transform ${listOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {listOpen && (
-              <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-64 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg">
-                {loadingLists && (
-                  <div className="flex items-center justify-center py-4"><Loader2 size={14} className="animate-spin text-gray-300" /></div>
-                )}
-                {!loadingLists && listes.length === 0 && (
-                  <div className="px-4 py-3 text-[12px] text-gray-400">Aucune liste — créez-en une</div>
-                )}
-                {listes.map(l => (
-                  <div key={l.id}
-                    className={`flex items-center justify-between px-3 py-2.5 ${l.id === selectedList?.id ? 'bg-orange-50/50' : 'hover:bg-orange-50/30'}`}>
-                    <button
-                      onClick={() => handleListChange(l)}
-                      className={`flex-1 text-left text-[12px] ${l.id === selectedList?.id ? 'font-semibold text-[#F4511E]' : 'text-gray-700'}`}>
-                      {l.name}
-                      <span className="ml-1.5 text-[10px] text-gray-400">({l.contact_count})</span>
-                    </button>
-                    <button
-                      onClick={e => { e.stopPropagation(); handleDeleteList(l) }}
-                      className="ml-2 shrink-0 rounded p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                      title="Supprimer cette liste">
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Recherche */}
-          <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-            <Search size={13} className="shrink-0 text-gray-400" />
-            <input type="text" value={search} onChange={e => handleSearchChange(e.target.value)}
-              placeholder="Téléphone ou nom..."
-              className="flex-1 bg-transparent text-[12px] text-[#1F2937] outline-none placeholder-gray-400"
-            />
-            {search && (
-              <button onClick={() => handleSearchChange('')} className="text-gray-300 hover:text-gray-500">
-                <X size={12} />
+            {/* Sélecteur de liste */}
+            <div className="relative">
+              <button onClick={() => setListOpen(o => !o)}
+                className="flex min-w-[170px] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50">
+                <span className="flex-1 text-left">{selectedList?.name ?? 'Toutes les listes'}</span>
+                <ChevronDown size={12} className={`transition-transform ${listOpen ? 'rotate-180' : ''}`} />
               </button>
-            )}
-          </div>
+              {listOpen && (
+                <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-64 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg">
+                  {loadingLists && (
+                    <div className="flex items-center justify-center py-4"><Loader2 size={14} className="animate-spin text-gray-300" /></div>
+                  )}
+                  {!loadingLists && listes.length === 0 && (
+                    <div className="px-4 py-3 text-[12px] text-gray-400">Aucune liste — créez-en une</div>
+                  )}
+                  {listes.map(l => (
+                    <div key={l.id}
+                      className={`flex items-center justify-between px-3 py-2.5 ${l.id === selectedList?.id ? 'bg-orange-50/50' : 'hover:bg-orange-50/30'}`}>
+                      <button
+                        onClick={() => handleListChange(l)}
+                        className={`flex-1 text-left text-[12px] ${l.id === selectedList?.id ? 'font-semibold text-[#F4511E]' : 'text-gray-700'}`}>
+                        {l.name}
+                        <span className="ml-1.5 text-[10px] text-gray-400">({l.contact_count})</span>
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); handleDeleteList(l) }}
+                        className="ml-2 shrink-0 rounded p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        title="Supprimer cette liste">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-          {/* Statut */}
-          {(['all','active','optout'] as const).map(s => (
-            <button key={s} onClick={() => handleStatusChange(s)}
-              className={`rounded-xl px-3 py-2 text-[12px] font-medium transition-colors ${statutFilter === s ? 'bg-[#F4511E] text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-              {s === 'all' ? 'Tous' : s === 'active' ? 'Actifs' : 'Désabonnés'}
+            {/* Statut */}
+            <div className="relative">
+              <select
+                value={statutFilter}
+                onChange={e => handleStatusChange(e.target.value as 'all' | 'active' | 'optout')}
+                className="appearance-none rounded-xl border border-gray-200 bg-white py-2.5 pl-3 pr-8 text-[12px] font-medium text-gray-700 outline-none hover:bg-gray-50">
+                <option value="all">Tous les statuts</option>
+                <option value="active">Actifs</option>
+                <option value="optout">Désabonnés</option>
+              </select>
+              <ChevronDown size={12} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+
+            {/* Filtres (avancés — à venir) */}
+            <button title="Filtres avancés"
+              className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2.5 text-[12px] font-semibold text-gray-600 hover:bg-gray-50">
+              <Filter size={13} /> Filtres
             </button>
-          ))}
+
+            {/* Export */}
+            <button onClick={handleExport}
+              disabled={!selectedList || contacts.length === 0}
+              title="Exporter la page courante en CSV"
+              className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2.5 text-[12px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+              <Download size={13} /> Exporter
+            </button>
+          </div>
+        </div>
+
+        {/* Raccourcis */}
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <button onClick={() => navigate('/app/sms/listes')}
+            className="rounded-2xl border border-gray-100 bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-md">
+            <List size={20} className="mb-2 text-[#F4511E]" />
+            <p className="text-[14px] font-bold text-[#1F2937]">Gérer les Listes</p>
+            <p className="mt-0.5 text-[11px] text-gray-500">{listes.length} liste(s) active(s)</p>
+          </button>
+          <button onClick={() => navigate('/app/sms/listes')}
+            className="rounded-2xl border border-gray-100 bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-md">
+            <Filter size={20} className="mb-2 text-[#3B82F6]" />
+            <p className="text-[14px] font-bold text-[#1F2937]">Créer un Segment</p>
+            <p className="mt-0.5 text-[11px] text-gray-500">Segmentation avancée</p>
+          </button>
+          <button title="Bientôt disponible"
+            className="rounded-2xl border border-gray-100 bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-md">
+            <AlertTriangle size={20} className="mb-2 text-[#F4511E]" />
+            <p className="text-[14px] font-bold text-[#1F2937]">Détecter Doublons</p>
+            <p className="mt-0.5 text-[11px] text-gray-500">— doublons détectés</p>
+          </button>
+          <button onClick={() => navigate('/app/sms/masse')}
+            className="rounded-2xl bg-[#F4511E] p-4 text-left text-white shadow-sm transition-colors hover:bg-[#d9400f]">
+            <Send size={20} className="mb-2 text-white/90" />
+            <p className="text-[14px] font-bold">Envoyer SMS</p>
+            <p className="mt-0.5 text-[11px] text-white/80">
+              Campagne vers {selectedList ? selectedList.contact_count.toLocaleString('fr-FR') : totalContacts.toLocaleString('fr-FR')} contacts
+            </p>
+          </button>
         </div>
 
         {/* État vide — aucune liste */}
@@ -782,7 +833,7 @@ export default function SmsGestionContactsPage() {
                         checked={selected.length === contacts.length && contacts.length > 0}
                         onChange={toggleAll} className="rounded" />
                     </th>
-                    {['Contact', 'Téléphone', 'Statut', 'Ajouté le', 'Actions'].map(h => (
+                    {['Contact', 'Téléphone', 'Localisation', 'Tags', 'Statut', 'Performance', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">{h}</th>
                     ))}
                   </tr>
@@ -790,14 +841,14 @@ export default function SmsGestionContactsPage() {
                 <tbody>
                   {loadingCtx && (
                     <tr>
-                      <td colSpan={6} className="py-10 text-center">
+                      <td colSpan={8} className="py-10 text-center">
                         <Loader2 size={18} className="mx-auto animate-spin text-gray-300" />
                       </td>
                     </tr>
                   )}
                   {!loadingCtx && contacts.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-10 text-center text-[12px] text-gray-400">
+                      <td colSpan={8} className="py-10 text-center text-[12px] text-gray-400">
                         {search || statutFilter !== 'all'
                           ? 'Aucun contact ne correspond aux filtres'
                           : 'Aucun contact dans cette liste'}
@@ -821,6 +872,12 @@ export default function SmsGestionContactsPage() {
 
                       <td className="px-4 py-3 text-[12px] text-gray-700 whitespace-nowrap font-mono">{c.phone}</td>
 
+                      {/* Localisation — dispo quand le backend stockera ville/pays */}
+                      <td className="px-4 py-3 text-[11px] text-gray-400">—</td>
+
+                      {/* Tags — dispo quand le backend stockera les tags contact */}
+                      <td className="px-4 py-3 text-[11px] text-gray-400">—</td>
+
                       <td className="px-4 py-3">
                         {c.opted_out ? (
                           <span className="flex w-fit items-center gap-1.5 rounded-full bg-[#FEF2F2] px-2.5 py-1 text-[10px] font-semibold text-[#DC2626]">
@@ -833,14 +890,24 @@ export default function SmsGestionContactsPage() {
                         )}
                       </td>
 
-                      <td className="px-4 py-3 text-[11px] text-gray-400 whitespace-nowrap">
-                        {new Date(c.created_at).toLocaleDateString('fr-FR')}
-                      </td>
+                      {/* Performance — délivrabilité/ouverture/clic par contact à venir */}
+                      <td className="px-4 py-3 text-[11px] text-gray-400 whitespace-nowrap">—</td>
 
                       <td className="px-4 py-3">
-                        <button className="rounded p-1.5 text-[#3B82F6] hover:bg-blue-50 transition-colors" title="Envoyer SMS individuel">
-                          <Send size={13} />
-                        </button>
+                        <div className="flex items-center gap-0.5">
+                          <button className="rounded p-1.5 text-[#3B82F6] hover:bg-blue-50 transition-colors" title="Envoyer SMS individuel">
+                            <Send size={13} />
+                          </button>
+                          <button className="rounded p-1.5 text-gray-300 cursor-not-allowed" title="Modifier — bientôt disponible" disabled>
+                            <Pencil size={13} />
+                          </button>
+                          <button className="rounded p-1.5 text-gray-300 cursor-not-allowed" title="Historique — bientôt disponible" disabled>
+                            <Clock size={13} />
+                          </button>
+                          <button className="rounded p-1.5 text-gray-300 cursor-not-allowed" title="Supprimer — bientôt disponible" disabled>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

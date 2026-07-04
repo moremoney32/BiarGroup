@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Send, Phone, MessageSquare, CheckCircle2, Users,
-  ChevronRight, Zap, BarChart2, Loader2,
+  ChevronRight, Zap, BarChart2, Loader2, Eye,
 } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
@@ -47,7 +47,7 @@ export default function SmsDashboardPage() {
     },
     {
       icon: Users,        iconBg: '#F5F3FF', iconColor: '#8B5CF6',
-      label: 'Contacts actifs',
+      label: 'Utilisateurs Actifs',
       value: loading ? '…' : (stats?.totalContacts ?? 0).toLocaleString('fr-FR'),
     },
   ]
@@ -69,21 +69,24 @@ export default function SmsDashboardPage() {
         >
           {kpiCards.map(({ icon: Icon, iconBg, iconColor, label, value }) => (
             <motion.div key={label} variants={fadeUp} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-start justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: iconBg }}>
-                  <Icon size={18} style={{ color: iconColor }} />
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-[12px] text-gray-500">{label}</p>
+                  <p className="mt-1 text-[22px] font-bold text-[#1F2937]">{value}</p>
                 </div>
-                {loading && <Loader2 size={13} className="animate-spin text-gray-300 mt-1" />}
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: iconBg }}>
+                  {loading
+                    ? <Loader2 size={15} className="animate-spin text-gray-300" />
+                    : <Icon size={18} style={{ color: iconColor }} />}
+                </div>
               </div>
-              <p className="text-[22px] font-bold text-[#1F2937]">{value}</p>
-              <p className="mt-0.5 text-[11px] text-gray-500">{label}</p>
             </motion.div>
           ))}
         </motion.div>
 
         {/* Banner Prototypage Intelligent */}
         <motion.div
-          className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-[#F4511E] to-[#3B2F8F] p-5"
+          className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-[#7C3AED] via-[#2563EB] to-[#0D9488] p-5"
           variants={fadeUp} initial="initial" animate="animate"
           transition={{ delay: 0.25 }}
         >
@@ -111,9 +114,16 @@ export default function SmsDashboardPage() {
               </div>
               <button
                 onClick={() => navigate('/app/sms/analytics')}
-                className="rounded-lg bg-[#2563EB] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1d4ed8]"
+                className="rounded-lg bg-white/15 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/25"
               >
                 Analytics
+              </button>
+              <button
+                onClick={() => navigate('/app/sms/analytics')}
+                aria-label="Voir les détails"
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/15 text-white hover:bg-white/25"
+              >
+                <Eye size={13} />
               </button>
             </div>
           </div>
@@ -147,8 +157,8 @@ export default function SmsDashboardPage() {
             <div className="flex items-center gap-6">
               {[
                 { label: 'Appels entrants', value: '—' },
+                { label: 'Appels sortants', value: '—' },
                 { label: 'Agents actifs', value: '—' },
-                { label: 'En attente', value: '—' },
               ].map(({ label, value }) => (
                 <div key={label}>
                   <p className="text-[18px] font-bold text-[#1F2937]">{value}</p>

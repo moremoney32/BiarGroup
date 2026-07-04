@@ -174,21 +174,27 @@ export const smsService = {
     const limit = Math.min(100, opts.limit ?? 20)
     const offset = (page - 1) * limit
 
-    let where = 'WHERE tenant_id = ? AND deleted_at IS NULL'
+    let where = 'WHERE c.tenant_id = ? AND c.deleted_at IS NULL'
     const params: (string | number | null)[] = [tenantId]
 
-    if (opts.status)       { where += ' AND status = ?';               params.push(opts.status) }
-    if (opts.campaignType) { where += ' AND campaign_type = ?';        params.push(opts.campaignType) }
-    if (opts.from)         { where += ' AND created_at >= ?';          params.push(opts.from) }
-    if (opts.to)           { where += ' AND created_at <= ?';          params.push(opts.to) }
+    if (opts.status)       { where += ' AND c.status = ?';               params.push(opts.status) }
+    if (opts.campaignType) { where += ' AND c.campaign_type = ?';        params.push(opts.campaignType) }
+    if (opts.from)         { where += ' AND c.created_at >= ?';          params.push(opts.from) }
+    if (opts.to)           { where += ' AND c.created_at <= ?';          params.push(opts.to) }
 
     // pool.query (text protocol) évite le bug mysql2 avec LIMIT/OFFSET en prepared statements
+    // total_clicks : clics réels des liens courts associés à la campagne (endpoint /sms/r/:code)
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT * FROM sms_campaigns ${where} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+      `SELECT c.*,
+              (SELECT COALESCE(SUM(l.clicks), 0) FROM sms_short_links l WHERE l.campaign_id = c.id) AS total_clicks,
+              (SELECT COUNT(DISTINCT k.ip_hash) FROM sms_link_clicks k
+               JOIN sms_short_links l2 ON l2.id = k.link_id
+               WHERE l2.campaign_id = c.id) AS total_unique_clicks
+       FROM sms_campaigns c ${where} ORDER BY c.created_at DESC LIMIT ${limit} OFFSET ${offset}`,
       params
     )
     const [countRows] = await pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) as total FROM sms_campaigns ${where}`,
+      `SELECT COUNT(*) as total FROM sms_campaigns c ${where}`,
       params
     )
 
@@ -350,6 +356,15 @@ export const smsService = {
 
     const campaign = await smsService.getCampaignById(campaignId, tenantId)
     if (!campaign) throw new Error('Campagne introuvable')
+
+    // Associe les liens courts présents dans le message à cette campagne (taux de clic par campagne)
+    const linkCodes = [...campaign.message.matchAll(/\/sms\/r\/([A-Za-z0-9_-]{3,30})/g)].map(m => m[1])
+    if (linkCodes.length > 0) {
+      await pool.query(
+        'UPDATE sms_short_links SET campaign_id = ? WHERE tenant_id = ? AND code IN (?)',
+        [campaignId, tenantId, linkCodes]
+      )
+    }
 
     // Charger les listes liées
     const [listRows] = await pool.execute<RowDataPacket[]>(
@@ -1290,7 +1305,7 @@ export const smsService = {
   },
 
   async createShortLink(
-    data: { url: string; title?: string; expiresInDays?: number },
+    data: { url: string; title?: string; expiresInDays?: number; customCode?: string },
     tenantId: number,
     userId: number
   ): Promise<SmsShortLink> {
@@ -1305,7 +1320,17 @@ export const smsService = {
       throw new Error('Seules les URLs http et https sont acceptées')
     }
 
-    const code      = await generateUniqueCode()
+    let code: string
+    if (data.customCode) {
+      const [existing] = await pool.execute<RowDataPacket[]>(
+        'SELECT id FROM sms_short_links WHERE code = ?',
+        [data.customCode]
+      )
+      if (existing.length > 0) throw new Error('Ce code personnalisé est déjà utilisé')
+      code = data.customCode
+    } else {
+      code = await generateUniqueCode()
+    }
     const expiresAt = data.expiresInDays
       ? new Date(Date.now() + data.expiresInDays * 24 * 60 * 60 * 1000)
       : null
@@ -1367,7 +1392,7 @@ export const smsService = {
   async getShortLinkStats(
     id: number,
     tenantId: number
-  ): Promise<{ total_clicks: number; clicks_by_day: Array<{ date: string; count: number }> }> {
+  ): Promise<{ total_clicks: number; unique_clicks: number; clicks_by_day: Array<{ date: string; count: number }> }> {
     const [rows] = await pool.execute<RowDataPacket[]>(
       'SELECT * FROM sms_short_links WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
       [id, tenantId]
@@ -1381,9 +1406,16 @@ export const smsService = {
       [id]
     )
 
+    // Uniques : 1 par personne/jour (le hash IP est salé quotidiennement)
+    const [[uniqueRow]] = await pool.execute<RowDataPacket[]>(
+      'SELECT COUNT(DISTINCT ip_hash) as uniques FROM sms_link_clicks WHERE link_id = ?',
+      [id]
+    )
+
     const link = rows[0] as SmsShortLink
     return {
-      total_clicks: Number(link.clicks),
+      total_clicks:  Number(link.clicks),
+      unique_clicks: Number(uniqueRow.uniques) || 0,
       clicks_by_day: clickRows.map(r => ({ date: r.date as string, count: Number(r.count) })),
     }
   },
@@ -1576,6 +1608,9 @@ export const smsService = {
     successRate: number
     uniqueRecipients: number
     totalCost: number
+    totalClicks: number
+    uniqueClicks: number
+    clickRate: number
   }> {
     const [[stats]] = await pool.execute<RowDataPacket[]>(
       `SELECT
@@ -1588,13 +1623,31 @@ export const smsService = {
        WHERE tenant_id = ? AND deleted_at IS NULL`,
       [tenantId]
     )
-    const total = Number(stats.totalSms) || 0
+    // Clics réels sur les liens courts du tenant (endpoint /sms/r/:code — aucune dépendance Infobip)
+    // totalClicks = tous les clics ; uniqueClicks = 1 par personne/lien/jour (ip_hash salé quotidien)
+    // Le taux de clic utilise les UNIQUES : 2 clics du même user = 1 seule personne engagée
+    const [[clickStats]] = await pool.execute<RowDataPacket[]>(
+      `SELECT
+         COALESCE(SUM(l.clicks), 0) as totalClicks,
+         (SELECT COUNT(DISTINCT k.link_id, k.ip_hash)
+          FROM sms_link_clicks k
+          JOIN sms_short_links l2 ON l2.id = k.link_id
+          WHERE l2.tenant_id = ?) as uniqueClicks
+       FROM sms_short_links l WHERE l.tenant_id = ?`,
+      [tenantId, tenantId]
+    )
+    const total   = Number(stats.totalSms) || 0
     const success = Number(stats.success) || 0
+    const clicks  = Number(clickStats.totalClicks) || 0
+    const uniques = Number(clickStats.uniqueClicks) || 0
     return {
       totalSms:         total,
       successRate:      total > 0 ? Math.round((success / total) * 1000) / 10 : 0,
       uniqueRecipients: Number(stats.uniqueRecipients) || 0,
       totalCost:        Math.round(Number(stats.totalCost) * 100) / 100,
+      totalClicks:      clicks,
+      uniqueClicks:     uniques,
+      clickRate:        success > 0 ? Math.round((uniques / success) * 1000) / 10 : 0,
     }
   },
 
@@ -1606,7 +1659,7 @@ export const smsService = {
     byHour: Array<{ hour: string; count: number }>
     engagementRate: Array<{ day: string; ouverture: number; clic: number; conversion: number }>
     byCountry: Array<{ country: string; count: number }>
-    topCampaigns: Array<{ name: string; sent: number; delivered: number; openRate: number; clickRate: number; revenue: number }>
+    topCampaigns: Array<{ name: string; sent: number; delivered: number; openRate: number | null; clickRate: number | null; revenue: number | null }>
   }> {
     const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
     const periodDays = opts.period === '7j' ? 7 : opts.period === '90j' ? 90 : 30
@@ -1660,23 +1713,29 @@ export const smsService = {
       return { hour: `${h}h`, count: hourMap[h] ?? 0 }
     })
 
-    // Taux d'engagement mock basé sur les données réelles (pas de tracking click côté SMS nativement)
-    const [engRows] = await pool.execute<RowDataPacket[]>(
-      `SELECT DAYOFWEEK(created_at) as dow,
-         ROUND(AVG(CASE WHEN status='delivered' THEN 75 ELSE 0 END), 1) as ouverture
-       FROM sms_messages
-       WHERE tenant_id = ? AND deleted_at IS NULL AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-       GROUP BY dow ORDER BY dow`,
-      [tenantId]
+    // Clic : réel, via les liens courts (le clic passe par notre endpoint /sms/r/:code).
+    // Ouverture/conversion : non trackables en SMS standard → 0, jamais inventé (RCS les apportera).
+    const [clickRows] = await pool.execute<RowDataPacket[]>(
+      `SELECT DAYOFWEEK(k.clicked_at) as dow, COUNT(DISTINCT k.ip_hash) as clicks
+       FROM sms_link_clicks k
+       JOIN sms_short_links l ON l.id = k.link_id
+       WHERE l.tenant_id = ? AND k.clicked_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+       GROUP BY dow`,
+      [tenantId, periodDays]
     )
-    const engMap: Record<number, number> = {}
-    for (const r of engRows as RowDataPacket[]) { engMap[Number(r.dow)] = Number(r.ouverture) }
-    const engagementRate = [2,3,4,5,6,7,1].map((dow, i) => ({
-      day: days[i],
-      ouverture:  engMap[dow] ?? 0,
-      clic:       Math.round((engMap[dow] ?? 0) * 0.4 * 10) / 10,
-      conversion: Math.round((engMap[dow] ?? 0) * 0.12 * 10) / 10,
-    }))
+    const clickMap: Record<number, number> = {}
+    for (const r of clickRows as RowDataPacket[]) { clickMap[Number(r.dow)] = Number(r.clicks) }
+
+    const engagementRate = [2,3,4,5,6,7,1].map((dow, i) => {
+      const delivered = byDayMap[dow]?.delivered ?? 0
+      const clicks    = clickMap[dow] ?? 0
+      return {
+        day: days[i],
+        ouverture:  0,
+        clic:       delivered > 0 ? Math.round((clicks / delivered) * 1000) / 10 : 0,
+        conversion: 0,
+      }
+    })
 
     // Distribution géographique depuis préfixe téléphone
     const [phoneRows] = await pool.execute<RowDataPacket[]>(
@@ -1697,22 +1756,27 @@ export const smsService = {
       .map(([country, count]) => ({ country, count }))
 
     const [topCampRows] = await pool.execute<RowDataPacket[]>(
-      `SELECT name, total_sent as sent, total_delivered as delivered
-       FROM sms_campaigns
-       WHERE tenant_id = ? AND deleted_at IS NULL AND status = 'sent'
-       ORDER BY total_delivered DESC LIMIT 5`,
+      `SELECT c.name, c.total_sent as sent, c.total_delivered as delivered,
+              (SELECT COUNT(DISTINCT k.ip_hash) FROM sms_link_clicks k
+               JOIN sms_short_links l ON l.id = k.link_id
+               WHERE l.campaign_id = c.id) as clicks
+       FROM sms_campaigns c
+       WHERE c.tenant_id = ? AND c.deleted_at IS NULL AND c.status = 'sent'
+       ORDER BY c.total_delivered DESC LIMIT 5`,
       [tenantId]
     )
+    // clickRate : réel via liens courts. openRate/revenue : null tant que non trackés (RCS / billing).
     const topCampaigns = (topCampRows as RowDataPacket[]).map(r => {
-      const sent = Number(r.sent) || 0
-      const del  = Number(r.delivered) || 0
+      const sent   = Number(r.sent) || 0
+      const del    = Number(r.delivered) || 0
+      const clicks = Number(r.clicks) || 0
       return {
         name:       r.name as string,
         sent,
         delivered:  del,
-        openRate:   sent > 0 ? Math.round((del / sent) * 1000) / 10 : 0,
-        clickRate:  sent > 0 ? Math.round((del / sent) * 400) / 10 : 0,
-        revenue:    0,
+        openRate:   null,
+        clickRate:  del > 0 ? Math.round((clicks / del) * 1000) / 10 : 0,
+        revenue:    null,
       }
     })
 
@@ -1741,23 +1805,25 @@ export const smsService = {
     const limit  = Math.min(100, opts.limit ?? 20)
     const offset = (page - 1) * limit
 
-    let where = 'WHERE tenant_id = ? AND deleted_at IS NULL'
+    let where = 'WHERE m.tenant_id = ? AND m.deleted_at IS NULL'
     const params: (string | number)[] = [tenantId]
 
-    if (opts.status) { where += ' AND status = ?';          params.push(opts.status) }
-    if (opts.search) { where += ' AND phone LIKE ?';        params.push(`%${opts.search}%`) }
-    if (opts.from)   { where += ' AND created_at >= ?';     params.push(opts.from) }
-    if (opts.to)     { where += ' AND created_at <= ?';     params.push(opts.to) }
+    if (opts.status) { where += ' AND m.status = ?';          params.push(opts.status) }
+    if (opts.search) { where += ' AND m.phone LIKE ?';        params.push(`%${opts.search}%`) }
+    if (opts.from)   { where += ' AND m.created_at >= ?';     params.push(opts.from) }
+    if (opts.to)     { where += ' AND m.created_at <= ?';     params.push(opts.to) }
 
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT id, phone, sender_id, body, status, operator, error_code, delivery_time_ms,
-              cost, campaign_id, sent_at, delivered_at, failure_reason, created_at
-       FROM sms_messages ${where}
-       ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+      `SELECT m.id, m.phone, m.sender_id, m.body, m.status, m.operator, m.error_code, m.delivery_time_ms,
+              m.cost, m.campaign_id, c.name AS campaign_name, m.sent_at, m.delivered_at, m.failure_reason, m.created_at
+       FROM sms_messages m
+       LEFT JOIN sms_campaigns c ON c.id = m.campaign_id
+       ${where}
+       ORDER BY m.created_at DESC LIMIT ${limit} OFFSET ${offset}`,
       params
     )
     const [[{ total }]] = await pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) as total FROM sms_messages ${where}`, params
+      `SELECT COUNT(*) as total FROM sms_messages m ${where}`, params
     )
     return { messages: rows, total: Number(total) }
   },
@@ -1957,11 +2023,27 @@ export const smsService = {
        GROUP BY d ORDER BY d`,
       [tenantId, periodDays]
     )
+
+    // Nouveaux clients réels par jour = numéros vus pour la première fois ce jour-là
+    const [newRows] = await pool.execute<RowDataPacket[]>(
+      `SELECT DATE(first_seen) as d, COUNT(*) as cnt FROM (
+         SELECT phone, MIN(created_at) as first_seen
+         FROM sms_messages WHERE tenant_id = ? AND deleted_at IS NULL
+         GROUP BY phone
+       ) fs
+       WHERE first_seen >= DATE_SUB(NOW(), INTERVAL ? DAY)
+       GROUP BY d`,
+      [tenantId, periodDays]
+    )
+    const newByDay: Record<string, number> = {}
+    for (const r of newRows as RowDataPacket[]) { newByDay[String(r.d)] = Number(r.cnt) }
+
     const trends = (trendRows as RowDataPacket[]).map(r => ({
       date:       r.d as string,
       actifs:     Number(r.phones) || 0,
-      nouveaux:   Math.round(Number(r.phones) * 0.08),
-      inactifs:   Math.round(Number(r.phones) * 0.05),
+      nouveaux:   newByDay[String(r.d)] ?? 0,
+      // Inactifs journaliers : nécessite un suivi d'activité par contact — 0 tant que non tracké
+      inactifs:   0,
       engagement: Number(r.total) > 0 ? Math.round((Number(r.del) / Number(r.total)) * 1000) / 10 : 0,
     }))
 

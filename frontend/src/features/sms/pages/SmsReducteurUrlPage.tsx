@@ -7,11 +7,14 @@ import { useToast } from '../../../hooks/useToast'
 import type { SmsShortLink } from '../../../types/sms.types'
 import { motion } from 'framer-motion'
 
-const TABS = ['+ Créer un lien', 'Mes liens'] as const
+const TABS = ['+ Créer un lien', 'Mes liens', 'Analytics', 'Domaines'] as const
 type Tab = typeof TABS[number]
 
 // Base URL du redirect — doit avoir http(s):// pour être cliquable dans un SMS
 const REDIRECT_BASE = (import.meta.env.VITE_API_URL as string ?? 'http://localhost:5000/api/v1').replace(/\/+$/, '')
+const REDIRECT_HOST = (() => {
+  try { return new URL(REDIRECT_BASE).host } catch { return REDIRECT_BASE }
+})()
 
 const fadeUp = {
   initial: { opacity: 0, y: 20 },
@@ -27,7 +30,8 @@ export default function SmsReducteurUrlPage() {
   // Formulaire
   const [url, setUrl]           = useState('')
   const [titre, setTitre]       = useState('')
-  const [expDays, setExpDays]   = useState('')
+  const [customCode, setCode]   = useState('')
+  const [expDate, setExpDate]   = useState('')
   const [creating, setCreating] = useState(false)
   const [created, setCreated]   = useState<SmsShortLink | null>(null)
   const [errCreate, setErrC]    = useState('')
@@ -39,6 +43,7 @@ export default function SmsReducteurUrlPage() {
   const [statsData, setStatsData]   = useState<{ date: string; count: number }[]>([])
   const [statsLoading, setStatsL]   = useState(false)
   const [statsTotal, setStatsTotal] = useState(0)
+  const [statsUnique, setStatsUnique] = useState(0)
 
   const fetchLinks = useCallback(async () => {
     setLoadingL(true)
@@ -56,17 +61,27 @@ export default function SmsReducteurUrlPage() {
 
   const totalClicks = links.reduce((s, l) => s + l.clicks, 0)
   const isActive = (l: SmsShortLink) => !l.expires_at || new Date(l.expires_at) > new Date()
-  const activeLinks = links.filter(isActive).length
 
   async function handleCreate() {
     if (!url.trim()) return
     setCreating(true); setErrC('')
     try {
-      const days = expDays ? parseInt(expDays) : undefined
-      const link = await smsService.createShortLink({ url: url.trim(), title: titre.trim() || undefined, expiresInDays: days })
+      // Date d'expiration → nombre de jours pour l'API
+      let days: number | undefined
+      if (expDate) {
+        const diff = Math.ceil((new Date(expDate).getTime() - Date.now()) / 86_400_000)
+        if (diff < 1) { setErrC("La date d'expiration doit être dans le futur"); setCreating(false); return }
+        days = Math.min(365, diff)
+      }
+      const link = await smsService.createShortLink({
+        url: url.trim(),
+        title: titre.trim() || undefined,
+        expiresInDays: days,
+        customCode: customCode.trim() || undefined,
+      })
       setCreated(link)
       setLinks(prev => [link, ...prev])
-      setUrl(''); setTitre(''); setExpDays('')
+      setUrl(''); setTitre(''); setExpDate(''); setCode('')
     } catch (err: unknown) {
       const msg = (err as { message?: string })?.message
       setErrC(msg ?? 'Erreur lors de la création du lien')
@@ -82,6 +97,7 @@ export default function SmsReducteurUrlPage() {
     try {
       const res = await smsService.getShortLinkStats(link.id)
       setStatsTotal(res.total_clicks)
+      setStatsUnique(res.unique_clicks)
       setStatsData(res.clicks_by_day)
     } catch {
       setStatsData([])
@@ -120,26 +136,22 @@ export default function SmsReducteurUrlPage() {
 
         {/* Header */}
         <div className="mb-5">
-          <h1 className="text-[22px] font-bold text-[#1F2937]">
-            <span className="mr-2">🔗</span>Réducteur d'URL
-          </h1>
+          <h1 className="text-[26px] font-bold text-[#F4511E]">Réducteur d'URL</h1>
           <p className="mt-0.5 text-[13px] text-gray-500">Créez des liens courts et trackables pour vos campagnes marketing</p>
         </div>
 
-        {/* KPIs */}
+        {/* KPIs — cartes pastel centrées (maquette) */}
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { icon: Link,         bg: '#EFF6FF', color: '#3B82F6', label: 'Liens créés',       value: links.length },
-            { icon: MousePointer, bg: '#F0FDF4', color: '#22C55E', label: 'Clics totaux',       value: totalClicks.toLocaleString('fr-FR') },
-            { icon: Globe,        bg: '#F5F3FF', color: '#8B5CF6', label: 'Liens actifs',       value: activeLinks },
-            { icon: TrendingUp,   bg: '#FFF7ED', color: '#F97316', label: 'Taux de clic moy.', value: links.length ? `${Math.round(totalClicks / links.length)} clics` : '—' },
+            { icon: Link,         bg: '#EFF6FF', color: '#3B82F6', label: 'Liens créés',        value: String(links.length) },
+            { icon: MousePointer, bg: '#F0FDF4', color: '#22C55E', label: 'Clics totaux',        value: totalClicks.toLocaleString('fr-FR') },
+            { icon: Globe,        bg: '#FDF2F8', color: '#EC4899', label: 'Domaines actifs',     value: '1' },
+            { icon: TrendingUp,   bg: '#FFF7ED', color: '#F97316', label: 'Taux de clic moyen', value: '—' },
           ].map(({ icon: Icon, bg, color, label, value }) => (
-            <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
-                <Icon size={15} style={{ color }} />
-              </div>
-              <p className="text-[20px] font-bold text-[#1F2937]">{value}</p>
-              <p className="mt-0.5 text-[11px] text-gray-500">{label}</p>
+            <div key={label} className="rounded-2xl border p-5 text-center shadow-sm" style={{ backgroundColor: bg, borderColor: `${color}25` }}>
+              <Icon size={22} className="mx-auto mb-2" style={{ color }} />
+              <p className="text-[22px] font-bold text-[#1F2937]">{value}</p>
+              <p className="mt-0.5 text-[12px]" style={{ color }}>{label}</p>
             </div>
           ))}
         </div>
@@ -171,25 +183,45 @@ export default function SmsReducteurUrlPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">Titre (optionnel)</label>
-                    <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Promotion Mars"
-                      className="w-full rounded-xl bg-[#FFEEE6] px-4 py-2.5 text-[12px] text-[#1F2937] outline-none ring-1 ring-orange-200 placeholder-orange-300"
-                    />
+                    <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">Domaine</label>
+                    <select
+                      className="w-full appearance-none rounded-xl bg-[#FFEEE6] px-4 py-2.5 text-[12px] text-[#1F2937] outline-none ring-1 ring-orange-200">
+                      <option>{REDIRECT_HOST}</option>
+                    </select>
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">Expire dans (jours)</label>
-                    <input type="number" min="1" max="365" value={expDays} onChange={e => setExpDays(e.target.value)}
-                      placeholder="30"
+                    <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">Code personnalisé (optionnel)</label>
+                    <input value={customCode}
+                      onChange={e => setCode(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
+                      maxLength={30}
+                      placeholder="promo-mars"
                       className="w-full rounded-xl bg-[#FFEEE6] px-4 py-2.5 text-[12px] text-[#1F2937] outline-none ring-1 ring-orange-200 placeholder-orange-300"
                     />
-                    <p className="mt-1 text-[10px] text-gray-400">Laissez vide = permanent</p>
+                    <p className="mt-1 text-[10px] text-gray-400">Laissez vide pour générer automatiquement</p>
                   </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">Titre (optionnel)</label>
+                  <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Promotion Mars 2026"
+                    className="w-full rounded-xl bg-[#FFEEE6] px-4 py-2.5 text-[12px] text-[#1F2937] outline-none ring-1 ring-orange-200 placeholder-orange-300"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-[12px] font-semibold text-gray-700">Date d'expiration (optionnel)</label>
+                  <input type="date" value={expDate}
+                    min={new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)}
+                    onChange={e => setExpDate(e.target.value)}
+                    className="w-full rounded-xl bg-[#FFEEE6] px-4 py-2.5 text-[12px] text-[#1F2937] outline-none ring-1 ring-orange-200"
+                  />
+                  <p className="mt-1 text-[10px] text-gray-400">Laissez vide = lien permanent</p>
                 </div>
 
                 {errCreate && <p className="text-[11px] text-red-500">{errCreate}</p>}
 
                 <button onClick={handleCreate} disabled={!url || creating}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F4511E] py-3 text-[13px] font-bold text-white hover:bg-[#d9400f] disabled:opacity-50">
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#F4511E] to-[#FB923C] py-3 text-[13px] font-bold text-white hover:opacity-90 disabled:opacity-50">
                   {creating ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
                   Créer le lien court
                 </button>
@@ -219,10 +251,10 @@ export default function SmsReducteurUrlPage() {
                 <p className="mb-3 text-[13px] font-bold text-[#1F2937]">Fonctionnalités</p>
                 <div className="space-y-3">
                   {[
-                    { icon: '🔗', title: "Raccourcissement d'URL", sub: 'Liens courts et mémorables', color: '#2563EB', bg: '#EFF6FF' },
-                    { icon: '📊', title: 'Statistiques de clics',  sub: 'Tracking en temps réel',    color: '#8B5CF6', bg: '#F5F3FF' },
-                    { icon: '⏱',  title: "Date d'expiration",      sub: 'Liens temporaires',          color: '#EA580C', bg: '#FFF7ED' },
-                    { icon: '🔒', title: 'Sécurité anti-redirect', sub: 'URL validée avant stockage', color: '#16A34A', bg: '#F0FDF4' },
+                    { icon: '🔗', title: "Raccourcissement d'URL",  sub: 'Liens courts personnalisables', color: '#2563EB', bg: '#EFF6FF' },
+                    { icon: '🌐', title: 'Domaines personnalisés',   sub: 'Utilisez votre propre domaine', color: '#8B5CF6', bg: '#F5F3FF' },
+                    { icon: '📊', title: 'Statistiques de clics',    sub: 'Tracking en temps réel',        color: '#16A34A', bg: '#F0FDF4' },
+                    { icon: '🔳', title: 'QR codes automatiques',    sub: 'Génération instantanée',        color: '#EA580C', bg: '#FFF7ED' },
                   ].map(({ icon, title, sub, color, bg }) => (
                     <div key={title} className="flex items-start gap-2.5 rounded-xl p-3" style={{ backgroundColor: bg }}>
                       <span className="text-[16px] shrink-0">{icon}</span>
@@ -305,6 +337,68 @@ export default function SmsReducteurUrlPage() {
           </div>
         )}
 
+        {/* Onglet Analytics — vue globale des clics */}
+        {activeTab === 'Analytics' && (
+          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <h2 className="mb-5 text-[15px] font-bold text-[#1F2937]">Analytics des liens</h2>
+            {links.length === 0 ? (
+              <div className="py-12 text-center text-[12px] text-gray-400">
+                Aucun lien créé — les statistiques apparaîtront ici
+              </div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={[...links].sort((a, b) => b.clicks - a.clicks).slice(0, 8).map(l => ({
+                    name: l.title || l.code, clics: l.clicks,
+                  }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#9CA3AF' }} />
+                    <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} allowDecimals={false} />
+                    <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+                    <Bar dataKey="clics" name="Clics" fill="#F4511E" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <p className="mt-3 text-center text-[11px] text-gray-400">Top liens par nombre de clics — cliquez sur "Voir stats" dans Mes liens pour le détail journalier</p>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Onglet Domaines */}
+        {activeTab === 'Domaines' && (
+          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-[15px] font-bold text-[#1F2937]">Domaines de raccourcissement</h2>
+              <button disabled title="Domaines personnalisés — bientôt disponible"
+                className="flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-4 py-2 text-[12px] font-bold text-white opacity-60 cursor-not-allowed">
+                <Plus size={12} /> Ajouter un domaine
+              </button>
+            </div>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-50 bg-gray-50/60">
+                  {['Domaine', 'Statut', 'Liens', 'Par défaut'].map(h => (
+                    <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-gray-50">
+                  <td className="px-4 py-3 text-[12px] font-mono font-semibold text-[#1F2937]">{REDIRECT_HOST}</td>
+                  <td className="px-4 py-3">
+                    <span className="rounded-full bg-[#F0FDF4] px-2.5 py-0.5 text-[10px] font-semibold text-[#16A34A]">Actif</span>
+                  </td>
+                  <td className="px-4 py-3 text-[12px] text-gray-600">{links.length}</td>
+                  <td className="px-4 py-3 text-[12px] text-[#F4511E] font-semibold">✓</td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="mt-4 text-[11px] text-gray-400">
+              Les domaines personnalisés (ex : lien.votremarque.cd) seront disponibles prochainement.
+            </p>
+          </div>
+        )}
+
       </motion.div>
       <DashboardFooter />
 
@@ -328,9 +422,9 @@ export default function SmsReducteurUrlPage() {
             {/* KPIs */}
             <div className="mb-5 grid grid-cols-3 gap-3">
               {[
-                { label: 'Clics totaux',   value: statsLoading ? '…' : statsTotal.toLocaleString('fr-FR'), color: '#3B82F6', bg: '#EFF6FF' },
-                { label: 'Jours trackés',  value: statsLoading ? '…' : String(statsData.length),           color: '#8B5CF6', bg: '#F5F3FF' },
-                { label: 'Moy. / jour',    value: statsLoading ? '…' : statsData.length ? Math.round(statsTotal / statsData.length).toString() : '0', color: '#F97316', bg: '#FFF7ED' },
+                { label: 'Clics totaux',      value: statsLoading ? '…' : statsTotal.toLocaleString('fr-FR'),  color: '#3B82F6', bg: '#EFF6FF' },
+                { label: 'Visiteurs uniques', value: statsLoading ? '…' : statsUnique.toLocaleString('fr-FR'), color: '#16A34A', bg: '#F0FDF4' },
+                { label: 'Moy. / jour',       value: statsLoading ? '…' : statsData.length ? Math.round(statsTotal / statsData.length).toString() : '0', color: '#F97316', bg: '#FFF7ED' },
               ].map(({ label, value, color, bg }) => (
                 <div key={label} className="rounded-xl p-3 text-center" style={{ backgroundColor: bg }}>
                   <p className="text-[18px] font-bold" style={{ color }}>{value}</p>

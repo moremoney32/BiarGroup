@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus, Search, ChevronDown, Trash2, BarChart2, Calendar, Send,
-  Users, Loader2, X, AlertCircle, RefreshCw, List,
+  Users, Loader2, X, AlertCircle, RefreshCw,
 } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
@@ -322,9 +322,9 @@ export default function SmsMessagesProgrammesPage() {
         {/* KPI Cards */}
         <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
-            { icon: Calendar, bg: '#EFF6FF', color: '#3B82F6', label: 'En attente d\'envoi', value: loading ? '…' : pending },
+            { icon: Calendar, bg: '#FFF7ED', color: '#F4511E', label: 'SMS programmés',      value: loading ? '…' : pending },
             { icon: Send,     bg: '#F0FDF4', color: '#22C55E', label: 'SMS envoyés',          value: loading ? '…' : dispatched },
-            { icon: Users,    bg: '#F5F3FF', color: '#8B5CF6', label: 'Total (page)',          value: loading ? '…' : (meta?.total ?? programmes.length) },
+            { icon: Users,    bg: '#EFF6FF', color: '#3B82F6', label: 'Total destinataires',  value: loading ? '…' : programmes.reduce((s, p) => s + p.recipient_count, 0).toLocaleString('fr-FR') },
           ].map(({ icon: Icon, bg, color, label, value }) => (
             <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
@@ -370,7 +370,7 @@ export default function SmsMessagesProgrammesPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-50 bg-gray-50/60">
-                  {['Titre & Message', 'Liste', 'Sender ID', 'Date & Heure planifiée', 'Statut', 'Actions'].map(h => (
+                  {['Titre & Message', 'Destinataires', 'Date & Heure', 'Sender ID', 'Statut', 'Actions'].map(h => (
                     <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -403,28 +403,25 @@ export default function SmsMessagesProgrammesPage() {
                         <p className="mt-0.5 text-[10px] text-gray-400 truncate">{p.message}</p>
                       </td>
                       <td className="px-4 py-3">
-                        {p.list_id ? (
-                          <span className="flex items-center gap-1 text-[11px] text-gray-600">
-                            <List size={10} className="text-gray-400" />
-                            {p.recipient_count > 0 ? `${p.recipient_count.toLocaleString('fr-FR')} contacts` : 'Liste liée'}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] italic text-gray-400">—</span>
-                        )}
+                        <p className="text-[12px] font-bold text-[#1F2937]">
+                          {p.recipient_count > 0 ? p.recipient_count.toLocaleString('fr-FR') : '—'}
+                        </p>
+                        <p className="text-[10px] text-gray-400">contacts</p>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="rounded-full bg-[#FFEEE6] px-2.5 py-0.5 text-[10px] font-semibold text-[#F4511E]">
-                          {p.sender_id}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className={`text-[12px] ${isPast ? 'text-orange-500 font-semibold' : 'text-gray-700'}`}>
+                        <p className={`flex items-center gap-1 text-[12px] ${isPast ? 'text-orange-500 font-semibold' : 'font-semibold text-gray-700'}`}>
+                          <Calendar size={11} className="text-gray-400" />
                           {sendAt.toLocaleDateString('fr-FR')}
                         </p>
                         <p className="text-[10px] text-gray-400">
                           ⏰ {sendAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                           {isPast && ' — en attente du cron'}
                         </p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-full bg-[#FFEEE6] px-2.5 py-0.5 text-[10px] font-semibold text-[#F4511E]">
+                          {p.sender_id}
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
@@ -435,7 +432,14 @@ export default function SmsMessagesProgrammesPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          {p.campaign_id && (
+                          {p.status === 'dispatched' && (
+                            <button
+                              onClick={() => navigate('/app/sms/rapports')}
+                              className="rounded-full border border-gray-200 px-3 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+                              Voir rapport
+                            </button>
+                          )}
+                          {p.campaign_id && p.status !== 'dispatched' && (
                             <button
                               onClick={() => navigate('/app/sms/masse')}
                               title="Voir la campagne générée"

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, Link as RouterLink } from 'react-router-dom'
 import {
   Send, CheckCircle2, XCircle, TrendingUp, Plus, ChevronDown,
   Zap, Settings2, Loader2, Trash2, Play, Eye, X, Clock,
@@ -7,10 +7,11 @@ import {
 } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell,
+  ResponsiveContainer,
 } from 'recharts'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
+import api from '../../../services/api'
 import type { SmsCampaign, SmsSenderId, SmsContactList, SmsTemplate, CampaignStatus, CampaignType, UpdateCampaignPayload } from '../../../types/sms.types'
 import type { PaginationMeta } from '../../../services/sms.service'
 import { motion } from 'framer-motion'
@@ -463,9 +464,10 @@ interface CampagnesTabProps {
   lists: SmsContactList[]
   templates: SmsTemplate[]
   initialMessage?: string
+  openNewRequest?: number
 }
 
-function CampagnesTab({ senderIds, lists, templates, initialMessage = '' }: CampagnesTabProps) {
+function CampagnesTab({ senderIds, lists, templates, initialMessage = '', openNewRequest = 0 }: CampagnesTabProps) {
   const [campaigns, setCampaigns] = useState<SmsCampaign[]>([])
   const [meta, setMeta]           = useState<PaginationMeta | null>(null)
   const [page, setPage]           = useState(1)
@@ -497,6 +499,11 @@ function CampagnesTab({ senderIds, lists, templates, initialMessage = '' }: Camp
   }, [])
 
   useEffect(() => { fetchCampaigns(page, statusFilter) }, [page, statusFilter, fetchCampaigns])
+
+  // Bouton "Nouvelle Campagne" du header de page
+  useEffect(() => {
+    if (openNewRequest > 0) setShowNew(true)
+  }, [openNewRequest])
 
   // Polling auto quand au moins une campagne est en cours d'envoi
   useEffect(() => {
@@ -715,18 +722,17 @@ function CampagnesTab({ senderIds, lists, templates, initialMessage = '' }: Camp
 
 // ── Page principale ────────────────────────────────────────────
 
-const TABS = ['Campagnes', 'API & SMPP'] as const
+const TABS = ['Campagnes', 'Contacts', 'Templates', 'API & SMPP'] as const
 type Tab = typeof TABS[number]
 
-// Mock charts — seront remplacés par les analytics réels
-const CHART_DATA = [
-  { h: '08h', e: 0 }, { h: '10h', e: 0 }, { h: '12h', e: 0 },
-  { h: '14h', e: 0 }, { h: '16h', e: 0 }, { h: '18h', e: 0 },
-]
-const OP_DATA = [
-  { name: 'Vodacom', value: 1, color: '#2563EB' },
-  { name: 'Airtel',  value: 1, color: '#EF4444' },
-  { name: 'Orange',  value: 1, color: '#F97316' },
+const PERIODS = ['Derniers 7 jours', 'Derniers 30 jours', 'Derniers 90 jours'] as const
+
+// Répartition opérateur : en attente des DLR Infobip (webhook notifyUrl — ticket IB#4492484)
+const OPERATORS = [
+  { name: 'Vodacom',  color: '#EF4444' },
+  { name: 'Airtel',   color: '#F59E0B' },
+  { name: 'Orange',   color: '#F97316' },
+  { name: 'Africell', color: '#3B82F6' },
 ]
 
 const fadeUp = {
@@ -742,6 +748,8 @@ export default function SmsEnMassePage() {
   const templateFromNav = (location.state as { templateBody?: string } | null)?.templateBody ?? ''
 
   const [activeTab, setActiveTab] = useState<Tab>('Campagnes')
+  const [period, setPeriod]       = useState<typeof PERIODS[number]>('Derniers 7 jours')
+  const [periodOpen, setPerOpen]  = useState(false)
 
   // Données partagées entre les tabs
   const [senderIds, setSenderIds] = useState<SmsSenderId[]>([])
@@ -750,7 +758,13 @@ export default function SmsEnMassePage() {
   const [overview, setOverview]   = useState({ totalSent: 0, totalDelivered: 0, totalFailed: 0, deliveryRate: 0, activeCampaigns: 0 })
   const [loadingInit, setInit]    = useState(true)
   // Ouvre la modale automatiquement si on vient de "Utiliser" un template
-  const fromTemplate = templateFromNav
+  const [tplBody, setTplBody]     = useState(templateFromNav)
+  // Incrémenté par le bouton "Nouvelle Campagne" du header
+  const [newRequest, setNewReq]   = useState(0)
+  // Volume horaire réel (endpoint analytics/rapports)
+  const [byHour, setByHour]       = useState<{ hour: string; count: number }[]>([])
+  // Taux de clic réel (liens courts — endpoint analytics/kpis)
+  const [clickRate, setClickRate] = useState<number | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -758,19 +772,27 @@ export default function SmsEnMassePage() {
       smsService.getContactLists().catch(() => [] as SmsContactList[]),
       smsService.getTemplates().catch(() => [] as SmsTemplate[]),
       smsService.getAnalyticsOverview().catch(() => null),
-    ]).then(([ids, ls, tpls, ov]) => {
+      api.get<{ data: { byHour: { hour: string; count: number }[] } }>('/sms/analytics/rapports?period=7j').catch(() => null),
+      api.get<{ data: { clickRate?: number } }>('/sms/analytics/kpis').catch(() => null),
+    ]).then(([ids, ls, tpls, ov, rap, kpis]) => {
       setSenderIds(ids.filter((s: SmsSenderId) => s.status === 'approved'))
       setLists(ls)
       setTemplates(tpls)
       if (ov) setOverview(ov as typeof overview)
+      if (rap) setByHour(rap.data.byHour)
+      if (kpis?.data.clickRate != null) setClickRate(kpis.data.clickRate)
     }).finally(() => setInit(false))
   }, [])
 
+  const failRate = overview.totalSent > 0
+    ? Math.round((overview.totalFailed / overview.totalSent) * 1000) / 10
+    : 0
+
   const kpiCards = [
-    { icon: Send,         bg: '#EFF6FF', color: '#3B82F6', label: 'Messages Envoyés', value: fmtNum(overview.totalSent) },
-    { icon: CheckCircle2, bg: '#F0FDF4', color: '#22C55E', label: 'Délivrés',          value: fmtNum(overview.totalDelivered) },
-    { icon: XCircle,      bg: '#FEF2F2', color: '#EF4444', label: 'Échecs',             value: fmtNum(overview.totalFailed) },
-    { icon: TrendingUp,   bg: '#FFF7ED', color: '#F97316', label: 'Taux de Livraison',  value: `${overview.deliveryRate}%` },
+    { icon: Send,         bg: '#EFF6FF', color: '#3B82F6', label: 'Messages Envoyés', value: fmtNum(overview.totalSent),      sub: '',                          subColor: '#16A34A' },
+    { icon: CheckCircle2, bg: '#F0FDF4', color: '#22C55E', label: 'Délivrés',          value: fmtNum(overview.totalDelivered), sub: `${overview.deliveryRate}%`, subColor: '#16A34A' },
+    { icon: XCircle,      bg: '#FEF2F2', color: '#EF4444', label: 'Échecs',             value: fmtNum(overview.totalFailed),    sub: `${failRate}%`,              subColor: '#DC2626' },
+    { icon: TrendingUp,   bg: '#F5F3FF', color: '#8B5CF6', label: 'Taux de Clic',       value: clickRate !== null ? `${clickRate}%` : '—', sub: '',             subColor: '#16A34A' },
   ]
 
   if (loadingInit) {
@@ -786,77 +808,100 @@ export default function SmsEnMassePage() {
       <motion.div className="px-6 py-5" variants={stagger} initial="initial" animate="animate">
 
         {/* Header */}
-        <motion.div className="mb-6" variants={fadeUp}>
-          <h1 className="text-[22px] font-bold text-[#1F2937]">SMS Bulk Marketing</h1>
-          <p className="mt-0.5 text-[13px] text-gray-500">Créez et gérez vos campagnes SMS en masse</p>
+        <motion.div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between" variants={fadeUp}>
+          <div>
+            <h1 className="text-[22px] font-bold text-[#1F2937]">SMS Bulk Marketing</h1>
+            <p className="mt-0.5 text-[13px] text-gray-500">Gérez vos campagnes SMS en masse avec SMPP & API</p>
+          </div>
+          <div className="flex gap-2">
+            <div className="relative">
+              <button onClick={() => setPerOpen(o => !o)}
+                className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-[12px] font-semibold text-gray-700 hover:bg-gray-50">
+                <Clock size={13} /> {period}
+                <ChevronDown size={12} className={`transition-transform ${periodOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {periodOpen && (
+                <div className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg">
+                  {PERIODS.map(p => (
+                    <button key={p} onClick={() => { setPeriod(p); setPerOpen(false) }}
+                      className={`w-full px-4 py-2.5 text-left text-[12px] hover:bg-orange-50 ${p === period ? 'font-semibold text-[#F4511E]' : 'text-gray-700'}`}>
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => { setActiveTab('Campagnes'); setNewReq(n => n + 1) }}
+              className="flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-4 py-2.5 text-[13px] font-bold text-white hover:bg-[#d9400f]">
+              <Send size={14} /> Nouvelle Campagne
+            </button>
+          </div>
         </motion.div>
 
         {/* KPI Cards */}
         <motion.div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4" variants={stagger}>
-          {kpiCards.map(({ icon: Icon, bg, color, label, value }) => (
+          {kpiCards.map(({ icon: Icon, bg, color, label, value, sub, subColor }) => (
             <motion.div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm" variants={fadeUp}>
-              <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
-                <Icon size={16} style={{ color }} />
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-[12px] text-gray-500">{label}</p>
+                  <p className="mt-1 text-[22px] font-bold text-[#1F2937]">{value}</p>
+                </div>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
+                  <Icon size={17} style={{ color }} />
+                </div>
               </div>
-              <p className="text-[20px] font-bold text-[#1F2937]">{value}</p>
-              <p className="mt-0.5 text-[11px] text-gray-500">{label}</p>
+              <p className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold" style={{ color: subColor }}>
+                {sub && <TrendingUp size={11} />}{sub}
+              </p>
             </motion.div>
           ))}
         </motion.div>
-
-        {/* Infos listes / sender IDs */}
-        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {[
-            { icon: Users, bg: '#F5F3FF', color: '#7C3AED', label: 'Listes disponibles',   value: lists.length },
-            { icon: List,  bg: '#FFF7ED', color: '#EA580C', label: 'Sender IDs approuvés', value: senderIds.length },
-            { icon: Send,  bg: '#F0FDF4', color: '#16A34A', label: 'Total contacts',        value: fmtNum(lists.reduce((s, l) => s + l.contact_count, 0)) },
-            { icon: CheckCircle2, bg: '#EFF6FF', color: '#2563EB', label: 'Templates',      value: templates.length },
-          ].map(({ icon: Icon, bg, color, label, value }) => (
-            <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
-                <Icon size={15} style={{ color }} />
-              </div>
-              <p className="text-[18px] font-bold text-[#1F2937]">{value}</p>
-              <p className="mt-0.5 text-[11px] text-gray-500">{label}</p>
-            </div>
-          ))}
-        </div>
 
         {/* Charts — placeholder jusqu'aux analytics réels */}
         <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
             <h3 className="mb-1 text-[14px] font-bold text-[#1F2937]">Volume d'Envois SMS</h3>
-            <p className="mb-4 text-[11px] text-gray-400">Les données apparaîtront après vos premières campagnes</p>
-            <ResponsiveContainer width="100%" height={160}>
-              <LineChart data={CHART_DATA} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-                <XAxis dataKey="h" tick={{ fontSize: 9, fill: '#9CA3AF' }} />
-                <YAxis tick={{ fontSize: 9, fill: '#9CA3AF' }} />
-                <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
-                <Line type="monotone" dataKey="e" stroke="#F4511E" strokeWidth={2} dot={false} name="Envois" />
-              </LineChart>
-            </ResponsiveContainer>
+            <p className="mb-4 text-[11px] text-gray-400">Distribution horaire des envois (aujourd'hui)</p>
+            {byHour.some(h => h.count > 0) ? (
+              <ResponsiveContainer width="100%" height={160}>
+                <LineChart data={byHour} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                  <XAxis dataKey="hour" tick={{ fontSize: 9, fill: '#9CA3AF' }} interval={3} />
+                  <YAxis tick={{ fontSize: 9, fill: '#9CA3AF' }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+                  <Line type="monotone" dataKey="count" stroke="#3B82F6" strokeWidth={2} dot={false} name="Envois" />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-[160px] items-center justify-center rounded-xl bg-gray-50 text-[12px] text-gray-400">
+                Aucun envoi aujourd'hui
+              </div>
+            )}
+            <div className="mt-2 flex justify-center gap-5">
+              <div className="flex items-center gap-1.5">
+                <div className="h-2 w-2 rounded-full bg-[#3B82F6]" />
+                <span className="text-[10px] font-semibold text-[#3B82F6]">Envois</span>
+              </div>
+            </div>
           </div>
           <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
             <h3 className="mb-1 text-[14px] font-bold text-[#1F2937]">Par Opérateur</h3>
-            <p className="mb-3 text-[11px] text-gray-400">Répartition après activation DLR</p>
-            <div className="flex items-center gap-4">
-              <ResponsiveContainer width="50%" height={140}>
-                <PieChart>
-                  <Pie data={OP_DATA} cx="50%" cy="50%" innerRadius={38} outerRadius={62} dataKey="value" stroke="none">
-                    {OP_DATA.map((e, i) => <Cell key={i} fill={e.color} opacity={0.4} />)}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="flex-1 space-y-2">
-                {OP_DATA.map(({ name, color }) => (
-                  <div key={name} className="flex items-center gap-2">
-                    <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-                    <span className="text-[11px] text-gray-500">{name}</span>
-                    <span className="ml-auto text-[11px] text-gray-400">—</span>
+            <p className="mb-3 text-[11px] text-gray-400">Répartition des envois</p>
+            <div className="flex h-[160px] flex-col items-center justify-center gap-3 rounded-xl bg-gray-50 px-4 text-center">
+              <div className="flex items-center gap-4">
+                {OPERATORS.map(op => (
+                  <div key={op.name} className="flex flex-col items-center gap-1">
+                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: op.color }} />
+                    <span className="text-[9px] text-gray-500">{op.name}</span>
                   </div>
                 ))}
               </div>
+              <p className="text-[11px] font-semibold text-gray-400">En attente des DLR Infobip</p>
+              <p className="text-[10px] text-gray-400 max-w-[240px]">
+                La répartition par opérateur sera disponible dès réception des accusés de livraison (webhook notifyUrl)
+              </p>
             </div>
           </div>
         </div>
@@ -872,7 +917,75 @@ export default function SmsEnMassePage() {
         </div>
 
         {activeTab === 'Campagnes' && (
-          <CampagnesTab senderIds={senderIds} lists={lists} templates={templates} initialMessage={fromTemplate} />
+          <CampagnesTab senderIds={senderIds} lists={lists} templates={templates}
+            initialMessage={tplBody} openNewRequest={newRequest} />
+        )}
+
+        {activeTab === 'Contacts' && (
+          <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between border-b border-gray-50 px-5 py-3">
+              <h3 className="text-[14px] font-bold text-[#1F2937]">Listes de contacts</h3>
+              <RouterLink to="/app/sms/contacts"
+                className="flex items-center gap-1.5 rounded-xl border border-[#F4511E] px-3 py-1.5 text-[11px] font-semibold text-[#F4511E] hover:bg-orange-50">
+                <Users size={12} /> Gérer les contacts
+              </RouterLink>
+            </div>
+            {lists.length === 0 ? (
+              <div className="py-12 text-center text-[12px] text-gray-400">
+                Aucune liste — créez-en une dans Gestion des Listes
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-50 bg-gray-50/60">
+                    {['Liste', 'Contacts', 'Créée le'].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lists.map(l => (
+                    <tr key={l.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <List size={13} className="text-[#F4511E]" />
+                          <span className="text-[12px] font-semibold text-[#1F2937]">{l.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-[12px] text-gray-600">{fmtNum(l.contact_count)}</td>
+                      <td className="px-4 py-3 text-[11px] text-gray-400">{fmtDate(l.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'Templates' && (
+          templates.length === 0 ? (
+            <div className="rounded-xl border border-gray-100 bg-white py-12 text-center text-[12px] text-gray-400 shadow-sm">
+              Aucun template — créez-en un dans Modèles SMS
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {templates.map(t => (
+                <div key={t.id} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                  <h3 className="mb-2 text-[14px] font-bold text-[#1F2937]">{t.name}</h3>
+                  <div className="mb-4 rounded-xl bg-[#FFD9C7] px-4 py-3 text-[12px] text-gray-700 leading-relaxed">
+                    {t.body}
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => { setTplBody(t.body); setActiveTab('Campagnes'); setNewReq(n => n + 1) }}
+                      className="rounded-xl bg-[#F4511E] px-4 py-1.5 text-[12px] font-bold text-white hover:bg-[#d9400f]">
+                      Utiliser
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         )}
 
         {activeTab === 'API & SMPP' && (

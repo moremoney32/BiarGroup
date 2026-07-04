@@ -46,7 +46,7 @@ export default function SmsTarifsCouverturePage() {
         <div className="rounded-xl border border-gray-200 bg-white p-5">
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-500">Pays couverts</p>
-            <Globe size={14} className="text-[#E91E8C]" />
+            <Globe size={14} className="text-[#F4511E]" />
           </div>
           <p className="mt-2 text-2xl font-bold text-gray-900">{tarifs.length}</p>
           <p className="text-xs text-gray-400">destinations disponibles</p>
@@ -54,7 +54,7 @@ export default function SmsTarifsCouverturePage() {
         <div className="rounded-xl border border-gray-200 bg-white p-5">
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-500">Prix moyen / SMS</p>
-            <TrendingDown size={14} className="text-[#3B2F8F]" />
+            <TrendingDown size={14} className="text-[#2563EB]" />
           </div>
           <p className="mt-2 text-2xl font-bold text-gray-900">${avgPrice.toFixed(4)}</p>
           <p className="text-xs text-gray-400">USD par message</p>
@@ -79,7 +79,7 @@ export default function SmsTarifsCouverturePage() {
               placeholder="Rechercher un pays ou indicatif..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full max-w-xs rounded-lg border border-gray-200 py-1.5 pl-9 pr-3 text-sm focus:border-[#E91E8C] focus:outline-none"
+              className="w-full max-w-xs rounded-lg border border-gray-200 py-1.5 pl-9 pr-3 text-sm focus:border-[#F4511E] focus:outline-none"
             />
           </div>
           <span className="text-xs text-gray-400">{filtered.length} résultat{filtered.length !== 1 ? 's' : ''}</span>
@@ -87,7 +87,7 @@ export default function SmsTarifsCouverturePage() {
 
         {loading ? (
           <div className="flex h-40 items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-4 border-[#E91E8C] border-t-transparent" />
+            <div className="h-6 w-6 animate-spin rounded-full border-4 border-[#F4511E] border-t-transparent" />
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -106,7 +106,7 @@ export default function SmsTarifsCouverturePage() {
                     <td className="px-5 py-3 font-medium text-gray-800">{t.pays}</td>
                     <td className="px-5 py-3 font-mono text-gray-600">{t.code}</td>
                     <td className="px-5 py-3 text-right">
-                      <span className="font-semibold text-[#E91E8C]">${t.prixParSms.toFixed(4)}</span>
+                      <span className="font-semibold text-[#F4511E]">${t.prixParSms.toFixed(4)}</span>
                     </td>
                     <td className="px-5 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -135,7 +135,7 @@ export default function SmsTarifsCouverturePage() {
 
         <div className="border-t border-gray-100 px-5 py-3">
           <p className="text-xs text-gray-400">
-            Tarifs indicatifs via Infobip — soumis à des variations selon les opérateurs locaux. Contact : <span className="text-[#E91E8C]">commercial@biargroup.sbs</span>
+            Tarifs indicatifs via Infobip — soumis à des variations selon les opérateurs locaux. Contact : <span className="text-[#F4511E]">commercial@biargroup.sbs</span>
           </p>
         </div>
       </div>

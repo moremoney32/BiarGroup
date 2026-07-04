@@ -162,4 +162,70 @@ scheduledQueue.on('error', (err) => console.warn('[SMS SCHEDULED] Redis non disp
 scheduledQueue.on('completed', () => console.log('[SMS SCHEDULED] ✅ Vérification terminée'))
 scheduledQueue.on('failed', (_job, err) => console.error('[SMS SCHEDULED] ❌', err?.message ?? err))
 
-export { scheduledQueue }
+// ── Queue Polling DLR (plan B du webhook notifyUrl — ticket Infobip IB#4492484) ──
+//
+// Toutes les 3 min : si des messages 'sent' de moins de 48h attendent leur DLR,
+// on va chercher les rapports chez Infobip (GET /sms/1/reports) et on les traite
+// avec la MÊME logique que le webhook (smsService.handleDlr).
+// Aucun message en attente → aucune requête (polling intelligent).
+
+const dlrPollingQueue = new Bull('sms-dlr-polling', { redis: redisConfig })
+
+dlrPollingQueue.process('poll', 1, async () => {
+  const { infobipService } = await import('../services/infobip.service')
+  if (!infobipService.isConfigured()) return
+
+  // Des messages attendent-ils encore leur DLR ? (fenêtre 48h — au-delà le DLR n'arrivera plus)
+  const [[{ pending }]] = await pool.execute<import('mysql2').RowDataPacket[]>(
+    `SELECT COUNT(*) as pending FROM sms_messages
+     WHERE status = 'sent' AND at_message_id IS NOT NULL
+       AND sent_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+       AND deleted_at IS NULL`
+  )
+  if (Number(pending) === 0) return
+
+  const { smsService } = await import('../services/sms.service')
+
+  // Jusqu'à 4 pages de 250 rapports par tick — borne la charge en cas de gros backlog
+  let totalProcessed = 0
+  for (let page = 0; page < 4; page++) {
+    const results = await infobipService.getDeliveryReports(250)
+    if (results.length === 0) break
+
+    for (const result of results) {
+      if (!result.messageId) continue
+      const failureReason = result.error?.groupName !== 'OK' ? result.error?.groupName : undefined
+      await smsService.handleDlr(result.messageId, result.status.groupName, failureReason, {
+        mccMnc:    result.mccMnc,
+        errorCode: result.error?.id,
+        errorName: result.error?.name,
+        doneAt:    result.doneAt,
+        sentAt:    result.sentAt,
+        cost:      result.price?.pricePerMessage,
+      })
+    }
+    totalProcessed += results.length
+    if (results.length < 250) break
+  }
+
+  if (totalProcessed > 0) {
+    console.log(`[DLR POLLING] ✅ ${totalProcessed} rapport(s) traité(s) — ${pending} message(s) en attente avant le tick`)
+  }
+})
+
+async function startDlrPolling() {
+  const jobs = await dlrPollingQueue.getRepeatableJobs()
+  if (!jobs.some(j => j.name === 'poll')) {
+    await dlrPollingQueue.add(
+      'poll', {},
+      { repeat: { every: 180_000 }, removeOnComplete: true, removeOnFail: 50 }
+    )
+    console.log('[DLR POLLING] Cron 3 min démarré (plan B webhook Infobip)')
+  }
+}
+startDlrPolling().catch(console.error)
+
+dlrPollingQueue.on('error', (err) => console.warn('[DLR POLLING] Redis non disponible :', err.message))
+dlrPollingQueue.on('failed', (_job, err) => console.error('[DLR POLLING] ❌', err?.message ?? err))
+
+export { scheduledQueue, dlrPollingQueue }

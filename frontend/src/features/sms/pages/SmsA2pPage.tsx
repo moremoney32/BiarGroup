@@ -107,34 +107,38 @@ export default function SmsA2pPage() {
             </button>
             <button
               onClick={() => navigate('/app/sms/masse')}
-              className="flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-3 py-2 text-[12px] font-bold text-white hover:bg-[#d9400f]">
+              className="flex items-center gap-1.5 rounded-xl bg-[#2563EB] px-3 py-2 text-[12px] font-bold text-white hover:bg-[#1d4ed8]">
               <Plus size={13} /> Nouvelle Campagne A2P
             </button>
           </div>
         </div>
 
-        {/* Banner */}
-        <div className="mb-5 rounded-2xl bg-gradient-to-r from-[#1D4ED8] to-[#3B82F6] p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <span className="text-[16px]">🛡</span>
-            <p className="text-[15px] font-bold text-white">SMS A2P — Messaging Professionnel Certifié</p>
+        {/* Banner — bleu clair (maquette) */}
+        <div className="mb-5 rounded-2xl bg-[#EFF6FF] p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#2563EB]">
+              <span className="text-[18px]">🛡</span>
+            </div>
+            <div className="flex-1">
+              <p className="text-[16px] font-bold text-[#1D4ED8]">SMS A2P - Messaging Professionnel Certifié</p>
+              <p className="mt-1 text-[12px] text-[#2563EB]">
+                Application-to-Person messaging pour communications professionnelles à grande échelle. Routage direct opérateurs, conformité GSMA, taux de livraison optimaux.
+              </p>
+            </div>
           </div>
-          <p className="mb-4 text-[11px] text-white/80">
-            Application-To-Person pour vos campagnes professionnelles à grande échelle. Routage via Infobip, conformité GSMA, taux de livraison optimum.
-          </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
-              { icon: '⚡', label: 'Routage Direct',    sub: 'Infobip' },
-              { icon: '📈', label: 'Haute Performance', sub: 'Envoi en masse' },
-              { icon: '✅', label: 'Conforme GSMA',     sub: 'Standards internationaux' },
-              { icon: '💰', label: 'Taux Optimal',      sub: `${stats?.deliveryRate ?? '—'}% de livraison` },
+              { icon: '⚡', label: 'Routage Direct',    sub: 'Connexions opérateurs' },
+              { icon: '📈', label: 'Haute Performance', sub: '300+ messages/seconde' },
+              { icon: '🛡', label: 'Conforme GSMA',     sub: 'Standards internationaux' },
+              { icon: '📊', label: 'Taux Optimal',      sub: stats?.deliveryRate != null ? `${stats.deliveryRate}% de livraison` : 'Mesuré via les DLR' },
             ].map(({ icon, label, sub }) => (
-              <div key={label} className="rounded-xl bg-white/15 px-3 py-2.5">
+              <div key={label} className="rounded-xl bg-white px-3 py-2.5">
                 <div className="flex items-center gap-1.5 mb-0.5">
                   <span className="text-[13px]">{icon}</span>
-                  <span className="text-[11px] font-bold text-white">{label}</span>
+                  <span className="text-[11px] font-bold text-[#1F2937]">{label}</span>
                 </div>
-                <p className="text-[10px] text-white/70">{sub}</p>
+                <p className="text-[10px] text-[#2563EB]">{sub}</p>
               </div>
             ))}
           </div>

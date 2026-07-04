@@ -37,6 +37,8 @@ export interface SmsCampaign {
   total_delivered: number   // DLR confirmé
   total_failed: number      // AT rejeté
   total_undelivered: number // DLR non livré
+  total_clicks?: number        // clics réels des liens courts liés (endpoint /sms/r/:code)
+  total_unique_clicks?: number // clics uniques (1 par personne/jour — hash IP salé)
   created_at: string
   updated_at: string
   deleted_at: string | null

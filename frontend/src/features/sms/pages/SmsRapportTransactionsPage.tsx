@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { CreditCard, TrendingDown, Calendar, DollarSign } from 'lucide-react'
+import { CreditCard, TrendingDown, Calendar, DollarSign, Download } from 'lucide-react'
 import api from '../../../services/api'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 
@@ -22,9 +22,9 @@ interface TxData {
 }
 
 const kpiCards = [
-  { key: 'totalUsed',  label: 'Total dépensé',     icon: CreditCard,    color: '#E91E8C' },
-  { key: 'thisMonth',  label: 'Ce mois-ci',         icon: Calendar,      color: '#3B2F8F' },
-  { key: 'today',      label: "Aujourd'hui",         icon: TrendingDown,  color: '#10B981' },
+  { key: 'totalUsed',  label: 'Crédits Utilisés', icon: DollarSign,   gradient: 'linear-gradient(135deg, #22C55E, #15803D)' },
+  { key: 'thisMonth',  label: 'Ce Mois',           icon: TrendingDown, gradient: 'linear-gradient(135deg, #3B82F6, #2563EB)' },
+  { key: 'today',      label: "Aujourd'hui",        icon: Calendar,     gradient: 'linear-gradient(135deg, #A855F7, #7C3AED)' },
 ]
 
 export default function SmsRapportTransactionsPage() {
@@ -40,44 +40,64 @@ export default function SmsRapportTransactionsPage() {
 
   const fmt = (d: string) => new Date(d).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
 
+  function exportCsv() {
+    if (!data?.transactions.length) return
+    const header = 'Date;Type;Campagne;Description;SMS;Montant'
+    const rows = data.transactions.map(tx =>
+      [fmt(tx.created_at), tx.type === 'credit' ? 'Crédit' : 'Débit',
+       tx.campaign_name ?? '—', `"${(tx.description ?? '—').replace(/"/g, '""')}"`,
+       tx.sms_count, `${tx.type === 'credit' ? '+' : '-'}${tx.amount.toFixed(4)}`].join(';')
+    ).join('\n')
+    const blob = new Blob(['﻿' + header + '\n' + rows], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `transactions-sms-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div>
     <motion.div {...fade} className="space-y-6 p-4 md:p-6">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Rapport Transactions</h1>
-        <p className="text-sm text-gray-500">Historique des débits et crédits de votre compte SMS</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-[22px] font-bold text-[#1F2937]">
+            <DollarSign size={22} className="text-[#F4511E]" />
+            Rapport de Transactions
+          </h1>
+          <p className="mt-0.5 text-[13px] text-gray-500">Suivez toutes vos transactions SMS</p>
+        </div>
+        <button onClick={exportCsv} disabled={!data?.transactions.length}
+          className="flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-4 py-2.5 text-[12px] font-bold text-white hover:bg-[#d9400f] disabled:opacity-50">
+          <Download size={13} /> Exporter
+        </button>
       </div>
 
       {loading ? (
         <div className="flex h-48 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#E91E8C] border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#F4511E] border-t-transparent" />
         </div>
       ) : (
         <>
-          {/* KPIs */}
+          {/* KPIs — cartes pleines couleurs (maquette) */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {kpiCards.map(({ key, label, icon: Icon, color }) => (
-              <div key={key} className="rounded-xl border border-gray-200 bg-white p-5">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-medium text-gray-500">{label}</p>
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: `${color}18` }}>
-                    <Icon size={16} style={{ color }} />
-                  </div>
-                </div>
-                <p className="mt-2 text-2xl font-bold text-gray-900">
-                  ${(data?.[key as keyof TxData] as number ?? 0).toFixed(4)}
+            {kpiCards.map(({ key, label, icon: Icon, gradient }) => (
+              <div key={key} className="rounded-2xl p-5 text-white shadow-sm" style={{ background: gradient }}>
+                <Icon size={26} className="mb-3 text-white/80" />
+                <p className="text-[13px] text-white/85">{label}</p>
+                <p className="mt-1 text-[26px] font-bold">
+                  ${(data?.[key as keyof TxData] as number ?? 0).toFixed(2)}
                 </p>
-                <p className="text-xs text-gray-400">USD</p>
               </div>
             ))}
           </div>
 
           {/* Tableau des transactions */}
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+          <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm">
             <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-4">
-              <DollarSign size={16} className="text-[#E91E8C]" />
-              <h2 className="text-sm font-semibold text-gray-700">
-                Dernières transactions ({data?.transactions.length ?? 0})
+              <h2 className="text-[15px] font-bold text-[#1F2937]">
+                Transactions Récentes
               </h2>
             </div>
 

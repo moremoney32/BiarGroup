@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Info, Tag, CheckCircle2, Clock, BarChart2, X, Loader2, Trash2 } from 'lucide-react'
+import { Plus, Search, Info, Tag, CheckCircle2, Clock, BarChart2, X, Loader2, Trash2, Star, Filter, Download } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
 import { useToast } from '../../../hooks/useToast'
@@ -99,6 +99,34 @@ export default function SmsIdentifiantsPage() {
   const [search, setSearch]       = useState('')
   const [showModal, setModal]     = useState(false)
   const [deleting, setDeleting]   = useState<number | null>(null)
+  const [defaultSender, setDefaultSender] = useState<string>(() =>
+    localStorage.getItem('sms_default_sender') ?? ''
+  )
+
+  function toggleDefault(sender: string) {
+    const next = defaultSender === sender ? '' : sender
+    setDefaultSender(next)
+    if (next) localStorage.setItem('sms_default_sender', next)
+    else localStorage.removeItem('sms_default_sender')
+  }
+
+  function exportCsv() {
+    if (emetteurs.length === 0) return
+    const header = 'Sender ID,Statut,Créé le,Approuvé le'
+    const rows = emetteurs.map(e =>
+      [e.sender_id, STATUT_LABEL[e.status] ?? e.status,
+       new Date(e.created_at).toLocaleDateString('fr-FR'),
+       e.approved_at ? new Date(e.approved_at).toLocaleDateString('fr-FR') : '—',
+      ].join(',')
+    ).join('\n')
+    const blob = new Blob(['﻿' + header + '\n' + rows], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'sender_ids.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const fetchSenderIds = useCallback(async () => {
     setLoading(true)
@@ -161,7 +189,7 @@ export default function SmsIdentifiantsPage() {
           <Info size={16} className="mt-0.5 shrink-0 text-[#3B82F6]" />
           <p className="text-[12px] text-[#1D4ED8] leading-relaxed">
             Le Sender ID (ou OADC) est le nom d'expéditeur qui apparaît sur le téléphone du destinataire.
-            Il peut contenir jusqu'à 11 caractères alphanumériques. Une fois approuvé par l'équipe BIAR, il est actif immédiatement.
+            Il peut contenir jusqu'à 11 caractères alphanumériques. L'approbation peut prendre 2-5 jours ouvrables selon les opérateurs.
           </p>
         </div>
 
@@ -171,7 +199,7 @@ export default function SmsIdentifiantsPage() {
             { icon: Tag,          bg: '#EFF6FF', color: '#3B82F6', label: 'Total Émetteurs', value: total },
             { icon: CheckCircle2, bg: '#F0FDF4', color: '#22C55E', label: 'Actifs',           value: actifs },
             { icon: Clock,        bg: '#FFF7ED', color: '#EA580C', label: 'En Attente',       value: attente },
-            { icon: BarChart2,    bg: '#F5F3FF', color: '#8B5CF6', label: 'Refusés',          value: emetteurs.filter(e => e.status === 'rejected').length },
+            { icon: BarChart2,    bg: '#F5F3FF', color: '#8B5CF6', label: 'Utilisations',     value: '—' },
           ].map(({ icon: Icon, bg, color, label, value }) => (
             <div key={label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: bg }}>
@@ -187,12 +215,22 @@ export default function SmsIdentifiantsPage() {
         <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
           <div className="flex items-center justify-between border-b border-gray-50 px-5 py-3">
             <h3 className="text-[14px] font-bold text-[#1F2937]">Liste des Émetteurs</h3>
-            <div className="flex items-center gap-2 rounded-xl bg-[#FFEEE6] px-3 py-2 ring-1 ring-orange-200">
-              <Search size={13} className="text-orange-300" />
-              <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Rechercher..."
-                className="w-32 bg-transparent text-[11px] text-[#1F2937] outline-none placeholder-orange-300"
-              />
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 rounded-xl bg-[#F4511E] px-3 py-2">
+                <Search size={13} className="text-white/70" />
+                <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Rechercher..."
+                  className="w-32 bg-transparent text-[11px] text-white outline-none placeholder-white/60"
+                />
+              </div>
+              <button title="Filtres avancés"
+                className="rounded-xl border border-gray-200 p-2 text-gray-500 hover:bg-gray-50">
+                <Filter size={13} />
+              </button>
+              <button onClick={exportCsv} disabled={emetteurs.length === 0} title="Exporter en CSV"
+                className="rounded-xl border border-gray-200 p-2 text-gray-500 hover:bg-gray-50 disabled:opacity-40">
+                <Download size={13} />
+              </button>
             </div>
           </div>
 
@@ -201,19 +239,19 @@ export default function SmsIdentifiantsPage() {
               <thead>
                 <tr className="border-b border-gray-50 bg-gray-50/60">
                   <th className="px-4 py-2.5 text-left"><input type="checkbox" className="rounded" /></th>
-                  {['Sender ID', 'Statut', 'Créé le', 'Approuvé le', 'Actions'].map(h => (
+                  {["Nom d'Émetteur", 'Statut', 'Pays', 'Utilisations', 'Créé le', 'Par défaut', 'Actions'].map(h => (
                     <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading && (
-                  <tr><td colSpan={6} className="py-10 text-center">
+                  <tr><td colSpan={8} className="py-10 text-center">
                     <Loader2 size={18} className="mx-auto animate-spin text-gray-300" />
                   </td></tr>
                 )}
                 {!loading && filtered.length === 0 && (
-                  <tr><td colSpan={6} className="py-10 text-center text-[12px] text-gray-400">
+                  <tr><td colSpan={8} className="py-10 text-center text-[12px] text-gray-400">
                     {search ? 'Aucun émetteur trouvé' : 'Aucun Sender ID — cliquez sur "Ajouter"'}
                   </td></tr>
                 )}
@@ -234,11 +272,21 @@ export default function SmsIdentifiantsPage() {
                           {STATUT_LABEL[sid.status] ?? sid.status}
                         </span>
                       </td>
+                      {/* Pays de couverture Infobip — CM + CD pour l'instant */}
+                      <td className="px-4 py-3 text-[11px] font-semibold text-gray-600 whitespace-nowrap">CM CD</td>
+                      {/* Compteur d'utilisations — dispo quand le backend le stockera */}
+                      <td className="px-4 py-3 text-[11px] text-gray-400">—</td>
                       <td className="px-4 py-3 text-[11px] text-gray-500">
                         {new Date(sid.created_at).toLocaleDateString('fr-FR')}
                       </td>
-                      <td className="px-4 py-3 text-[11px] text-gray-500">
-                        {sid.approved_at ? new Date(sid.approved_at).toLocaleDateString('fr-FR') : '—'}
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => toggleDefault(sid.sender_id)}
+                          aria-label={defaultSender === sid.sender_id ? 'Retirer le sender par défaut' : 'Définir comme sender par défaut'}
+                          className="rounded p-1 transition-colors hover:bg-yellow-50">
+                          <Star size={15}
+                            className={defaultSender === sid.sender_id ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'} />
+                        </button>
                       </td>
                       <td className="px-4 py-3">
                         <button
