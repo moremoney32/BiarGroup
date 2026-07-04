@@ -1,4 +1,5 @@
 import { Request, Response } from 'express'
+import crypto from 'crypto'
 import { z } from 'zod'
 import { smsService } from '../services/sms.service'
 import { sendSuccess, sendError } from '../helpers/response.helper'
@@ -654,28 +655,60 @@ export const smsController = {
     }
   },
 
-  // Redirect public — sans auth — rate limited côté route
+  // Redirect public — sans auth — rate limited côté route.
+  // Le GET ne compte JAMAIS le clic : les robots d'aperçu (Google Messages,
+  // scanners opérateur…) se déguisent en Chrome ordinaire — vu en prod, IPs
+  // Google 66.249.x.x avec UA navigateur. On sert une page interstitielle
+  // minuscule : le beacon JS compte, puis redirige. Les robots téléchargent
+  // le HTML sans exécuter le JS → plus de clics fantômes.
   async redirectShortLink(req: Request, res: Response): Promise<void> {
     try {
-      const ip  = (req.headers['x-forwarded-for'] as string)?.split(',')[0] ?? req.ip ?? ''
-      const ua  = (req.headers['user-agent'] as string | undefined) ?? ''
+      const ua = (req.headers['user-agent'] as string | undefined) ?? ''
+      const link = await smsService.resolveAndLogClick(req.params.code, '', false)
 
-      // Préfetch/scan automatique ≠ clic humain. Les apps SMS (Google Messages…),
-      // antivirus et scanners opérateur visitent le lien dès la LIVRAISON du SMS
-      // pour générer un aperçu → sans ce filtre, les clics suivent les délivrés.
-      const isPrefetch =
+      if (!link) { res.status(404).send('Lien introuvable ou expiré'); return }
+
+      // Bots d'aperçu déclarés (WhatsApp, Facebook…) : redirect direct sans compter,
+      // pour qu'ils construisent la carte d'aperçu depuis le site de destination
+      const isDeclaredBot =
         req.method === 'HEAD' ||
         ua === '' ||
         /bot|crawler|spider|preview|scan|probe|fetch|monitor|curl|wget|python|okhttp|headless|facebookexternalhit|whatsapp|telegram|skype|slack|discord|twitter|linkedin|googleimageproxy|google-pagerenderer/i.test(ua)
+      if (isDeclaredBot) { res.redirect(302, link.url); return }
 
-      const url = await smsService.resolveAndLogClick(req.params.code, ip, !isPrefetch)
-
-      if (!url) { res.status(404).send('Lien introuvable ou expiré'); return }
-      // 302 et non 301 : un 301 est mis en cache par le navigateur → les clics
-      // suivants ne passeraient plus par nous et ne seraient plus comptés
-      res.redirect(302, url)
+      const jsUrl    = JSON.stringify(link.url) // échappé pour contexte JS
+      const metaUrl  = link.url.replace(/"/g, '%22')
+      const safeTitle = (link.title ?? 'Redirection…').replace(/[<>&"]/g, '')
+      const script = `(function(){
+  var hit='/api/v1/sms/r/${encodeURIComponent(req.params.code)}/hit';
+  try{if(navigator.sendBeacon){navigator.sendBeacon(hit)}else{fetch(hit,{method:'POST',keepalive:true}).catch(function(){})}}catch(e){}
+  location.replace(${jsUrl});
+})();`
+      // La CSP globale (script-src 'self') bloquerait ce script inline → on
+      // l'autorise par hash, lui et lui seul (pas de 'unsafe-inline' global)
+      const scriptHash = crypto.createHash('sha256').update(script).digest('base64')
+      res.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'sha256-${scriptHash}'; connect-src 'self'`)
+      res.setHeader('Cache-Control', 'no-store')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.send(`<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title>
+<meta name="robots" content="noindex">
+<noscript><meta http-equiv="refresh" content="0;url=${metaUrl}"></noscript>
+</head><body>
+<script>${script}</script>
+</body></html>`)
     } catch {
       res.status(500).send('Erreur serveur')
+    }
+  },
+
+  // Beacon de comptage — appelé par le JS de l'interstitiel (donc navigateur réel)
+  async logShortLinkClick(req: Request, res: Response): Promise<void> {
+    try {
+      const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] ?? req.ip ?? ''
+      await smsService.resolveAndLogClick(req.params.code, ip, true)
+      res.status(204).end()
+    } catch {
+      res.status(204).end() // jamais d'erreur visible côté client
     }
   },
 

@@ -25,6 +25,9 @@ const router = Router()
 // Redirect lien court — rate limited pour éviter DDoS
 const redirectLimiter = rateLimit({ windowMs: 60_000, limit: 100, standardHeaders: true, legacyHeaders: false })
 router.get('/r/:code', redirectLimiter, smsController.redirectShortLink)
+// Beacon JS de l'interstitiel — seul endroit où le clic est compté (un robot
+// d'aperçu télécharge le HTML mais n'exécute pas le JS → pas de clic fantôme)
+router.post('/r/:code/hit', redirectLimiter, smsController.logShortLinkClick)
 
 // Webhook DLR AfricasTalking — AT envoie un POST ici après livraison
 // Pas d'auth JWT — vérifié par ?token=AT_DLR_SECRET dans le service

@@ -1368,9 +1368,9 @@ export const smsService = {
     code: string,
     rawIp: string,
     countClick: boolean = true
-  ): Promise<string | null> {
+  ): Promise<{ url: string; title: string | null } | null> {
     const [rows] = await pool.execute<RowDataPacket[]>(
-      `SELECT id, original_url, expires_at FROM sms_short_links
+      `SELECT id, original_url, title, expires_at FROM sms_short_links
        WHERE code = ? AND deleted_at IS NULL`,
       [code]
     )
@@ -1381,8 +1381,10 @@ export const smsService = {
     // Lien expiré
     if (link.expires_at && new Date(link.expires_at) < new Date()) return null
 
-    // Préfetch/bot détecté par le controller → on redirige sans compter
-    if (!countClick) return link.original_url as string
+    const result = { url: link.original_url as string, title: (link.title as string | null) ?? null }
+
+    // Résolution seule (GET interstitiel) — le comptage passe par le beacon JS
+    if (!countClick) return result
 
     // Hash IP avec sel quotidien (pas de stockage IP brute — vie privée)
     const dailySalt = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
@@ -1396,7 +1398,7 @@ export const smsService = {
       ),
     ])
 
-    return link.original_url as string
+    return result
   },
 
   async getShortLinkStats(
