@@ -10,8 +10,16 @@ import { motion } from 'framer-motion'
 const TABS = ['+ Créer un lien', 'Mes liens', 'Analytics', 'Domaines'] as const
 type Tab = typeof TABS[number]
 
-// Base URL du redirect — doit avoir http(s):// pour être cliquable dans un SMS
-const REDIRECT_BASE = (import.meta.env.VITE_API_URL as string ?? 'http://localhost:5000/api/v1').replace(/\/+$/, '')
+// Base URL du redirect — DOIT être absolue (https://...) pour être cliquable dans un SMS.
+// En prod VITE_API_URL est relatif ("/api/v1" derrière nginx) → on l'absolutise avec le domaine courant.
+const REDIRECT_BASE = (() => {
+  const raw = (import.meta.env.VITE_API_URL as string ?? 'http://localhost:5000/api/v1').replace(/\/+$/, '')
+  try {
+    return new URL(raw, window.location.origin).toString().replace(/\/+$/, '')
+  } catch {
+    return raw
+  }
+})()
 const REDIRECT_HOST = (() => {
   try { return new URL(REDIRECT_BASE).host } catch { return REDIRECT_BASE }
 })()
