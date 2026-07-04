@@ -10,6 +10,8 @@ interface CreditsData {
   balance: number
   usedThisMonth: number
   remaining: number
+  // Devise réelle du compte Infobip (via DLR) — null tant qu'aucune transaction datée
+  currency: string | null
   transactions: {
     id: number
     type: 'debit' | 'credit'
@@ -74,7 +76,10 @@ export default function SmsCreditsComptePage() {
               <div key={label} className="rounded-2xl p-5 text-white shadow-sm" style={{ background: gradient }}>
                 <Icon size={26} className="mb-3 text-white/80" />
                 <p className="text-[13px] text-white/85">{label}</p>
-                <p className="mt-1 text-[26px] font-bold">${value.toFixed(2)}</p>
+                <p className="mt-1 text-[26px] font-bold">
+                  {value.toFixed(2)}
+                  {data?.currency ? <span className="ml-1 text-[15px] font-semibold text-white/85">{data.currency}</span> : null}
+                </p>
               </div>
             ))}
           </div>
@@ -134,7 +139,7 @@ export default function SmsCreditsComptePage() {
                         </td>
                         <td className="px-5 py-2.5 text-right text-gray-600">{tx.sms_count.toLocaleString()}</td>
                         <td className={`px-5 py-2.5 text-right font-semibold ${tx.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
-                          {tx.type === 'credit' ? '+' : '−'}${tx.amount.toFixed(4)}
+                          {tx.type === 'credit' ? '+' : '−'}{tx.amount.toFixed(4)}{data?.currency ? ` ${data.currency}` : ''}
                         </td>
                       </tr>
                     ))}

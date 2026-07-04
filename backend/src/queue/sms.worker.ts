@@ -202,6 +202,7 @@ dlrPollingQueue.process('poll', 1, async () => {
         doneAt:    result.doneAt,
         sentAt:    result.sentAt,
         cost:      result.price?.pricePerMessage,
+        currency:  result.price?.currency,
       })
     }
     totalProcessed += results.length

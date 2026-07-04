@@ -243,6 +243,7 @@ export const smsController = {
           doneAt:    result.doneAt,
           sentAt:    result.sentAt,
           cost:      result.price?.pricePerMessage,
+          currency:  result.price?.currency,
         })
       }
 
@@ -657,10 +658,22 @@ export const smsController = {
   async redirectShortLink(req: Request, res: Response): Promise<void> {
     try {
       const ip  = (req.headers['x-forwarded-for'] as string)?.split(',')[0] ?? req.ip ?? ''
-      const url = await smsService.resolveAndLogClick(req.params.code, ip)
+      const ua  = (req.headers['user-agent'] as string | undefined) ?? ''
+
+      // Préfetch/scan automatique ≠ clic humain. Les apps SMS (Google Messages…),
+      // antivirus et scanners opérateur visitent le lien dès la LIVRAISON du SMS
+      // pour générer un aperçu → sans ce filtre, les clics suivent les délivrés.
+      const isPrefetch =
+        req.method === 'HEAD' ||
+        ua === '' ||
+        /bot|crawler|spider|preview|scan|probe|fetch|monitor|curl|wget|python|okhttp|headless|facebookexternalhit|whatsapp|telegram|skype|slack|discord|twitter|linkedin|googleimageproxy|google-pagerenderer/i.test(ua)
+
+      const url = await smsService.resolveAndLogClick(req.params.code, ip, !isPrefetch)
 
       if (!url) { res.status(404).send('Lien introuvable ou expiré'); return }
-      res.redirect(301, url)
+      // 302 et non 301 : un 301 est mis en cache par le navigateur → les clics
+      // suivants ne passeraient plus par nous et ne seraient plus comptés
+      res.redirect(302, url)
     } catch {
       res.status(500).send('Erreur serveur')
     }

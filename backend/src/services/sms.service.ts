@@ -505,6 +505,7 @@ export const smsService = {
       doneAt?: string
       sentAt?: string
       cost?: number
+      currency?: string
     }
   ): Promise<void> {
     const [rows] = await pool.execute<RowDataPacket[]>(
@@ -548,9 +549,10 @@ export const smsService = {
              error_code = '0',
              delivery_time_ms = ?,
              cost = COALESCE(?, cost),
+             cost_currency = COALESCE(?, cost_currency),
              updated_at = NOW()
          WHERE id = ?`,
-        [operatorName, deliveryTimeMs, extra?.cost ?? null, msg.id]
+        [operatorName, deliveryTimeMs, extra?.cost ?? null, extra?.currency ?? null, msg.id]
       )
     } else {
       await pool.execute(
@@ -559,6 +561,7 @@ export const smsService = {
              operator = COALESCE(?, operator),
              error_code = ?,
              cost = COALESCE(?, cost),
+             cost_currency = COALESCE(?, cost_currency),
              updated_at = NOW()
          WHERE id = ?`,
         [
@@ -566,6 +569,7 @@ export const smsService = {
           operatorName,
           extra?.errorCode !== undefined ? String(extra.errorCode) : null,
           extra?.cost ?? null,
+          extra?.currency ?? null,
           msg.id,
         ]
       )
@@ -575,9 +579,9 @@ export const smsService = {
     const infobipCost = extra?.cost ?? null
     if (infobipCost && infobipCost > 0) {
       await pool.execute(
-        `INSERT INTO sms_transactions (tenant_id, campaign_id, type, amount, sms_count, description)
-         VALUES (?, ?, 'debit', ?, 1, ?)`,
-        [msg.tenant_id, msg.campaign_id ?? null, infobipCost, `SMS ${newStatus}`]
+        `INSERT INTO sms_transactions (tenant_id, campaign_id, type, amount, currency, sms_count, description)
+         VALUES (?, ?, 'debit', ?, ?, 1, ?)`,
+        [msg.tenant_id, msg.campaign_id ?? null, infobipCost, extra?.currency ?? null, `SMS ${newStatus}`]
       )
       // Crée la ligne sms_credits si elle n'existe pas encore, puis déduit
       await pool.execute(
@@ -1362,7 +1366,8 @@ export const smsService = {
    */
   async resolveAndLogClick(
     code: string,
-    rawIp: string
+    rawIp: string,
+    countClick: boolean = true
   ): Promise<string | null> {
     const [rows] = await pool.execute<RowDataPacket[]>(
       `SELECT id, original_url, expires_at FROM sms_short_links
@@ -1375,6 +1380,9 @@ export const smsService = {
 
     // Lien expiré
     if (link.expires_at && new Date(link.expires_at) < new Date()) return null
+
+    // Préfetch/bot détecté par le controller → on redirige sans compter
+    if (!countClick) return link.original_url as string
 
     // Hash IP avec sel quotidien (pas de stockage IP brute — vie privée)
     const dailySalt = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
@@ -1610,17 +1618,20 @@ export const smsService = {
     successRate: number
     uniqueRecipients: number
     totalCost: number
+    costCurrency: string | null
     totalClicks: number
     uniqueClicks: number
     clickRate: number
   }> {
+    // costCurrency : devise réelle renvoyée par Infobip dans les DLR (un compte = une devise)
     const [[stats]] = await pool.execute<RowDataPacket[]>(
       `SELECT
          COUNT(*) as totalSms,
          SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered,
          SUM(CASE WHEN status IN ('delivered','sent') THEN 1 ELSE 0 END) as success,
          COUNT(DISTINCT phone) as uniqueRecipients,
-         COALESCE(SUM(cost), 0) as totalCost
+         COALESCE(SUM(cost), 0) as totalCost,
+         MAX(cost_currency) as costCurrency
        FROM sms_messages
        WHERE tenant_id = ? AND deleted_at IS NULL`,
       [tenantId]
@@ -1647,6 +1658,7 @@ export const smsService = {
       successRate:      total > 0 ? Math.round((success / total) * 1000) / 10 : 0,
       uniqueRecipients: Number(stats.uniqueRecipients) || 0,
       totalCost:        Math.round(Number(stats.totalCost) * 100) / 100,
+      costCurrency:     (stats.costCurrency as string | null) ?? null,
       totalClicks:      clicks,
       uniqueClicks:     uniques,
       clickRate:        success > 0 ? Math.round((uniques / success) * 1000) / 10 : 0,
@@ -1836,13 +1848,15 @@ export const smsService = {
     totalUsed: number
     thisMonth: number
     today: number
+    currency: string | null
     transactions: RowDataPacket[]
   }> {
     const [[agg]] = await pool.execute<RowDataPacket[]>(
       `SELECT
          COALESCE(SUM(amount),0) as totalUsed,
          COALESCE(SUM(CASE WHEN created_at >= DATE_FORMAT(NOW(),'%Y-%m-01') THEN amount ELSE 0 END),0) as thisMonth,
-         COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN amount ELSE 0 END),0) as today
+         COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN amount ELSE 0 END),0) as today,
+         MAX(currency) as currency
        FROM sms_transactions WHERE tenant_id = ? AND type = 'debit'`,
       [tenantId]
     )
@@ -1860,6 +1874,7 @@ export const smsService = {
       totalUsed:    Math.round(Number(agg.totalUsed)  * 100) / 100,
       thisMonth:    Math.round(Number(agg.thisMonth)  * 100) / 100,
       today:        Math.round(Number(agg.today)      * 100) / 100,
+      currency:     (agg.currency as string | null) ?? null,
       transactions: txRows,
     }
   },
@@ -2123,10 +2138,15 @@ export const smsService = {
     balance: number
     usedThisMonth: number
     remaining: number
+    currency: string | null
     transactions: RowDataPacket[]
   }> {
     const [[creditRow]] = await pool.execute<RowDataPacket[]>(
       'SELECT balance FROM sms_credits WHERE tenant_id = ?',
+      [tenantId]
+    )
+    const [[curRow]] = await pool.execute<RowDataPacket[]>(
+      'SELECT MAX(currency) as currency FROM sms_transactions WHERE tenant_id = ?',
       [tenantId]
     )
     const balance = Math.round(Number(creditRow?.balance ?? 0) * 100) / 100
@@ -2153,6 +2173,7 @@ export const smsService = {
       balance,
       usedThisMonth,
       remaining: Math.max(0, Math.round((balance - usedThisMonth) * 100) / 100),
+      currency: (curRow?.currency as string | null) ?? null,
       transactions: txRows,
     }
   },

@@ -60,6 +60,7 @@ interface AnalyticsKpis {
   successRate: number
   uniqueRecipients: number
   totalCost: number
+  costCurrency?: string | null
   totalClicks?: number
   clickRate?: number
 }
@@ -263,7 +264,7 @@ export default function SmsRapportsCampagnesPage() {
     { icon: BookOpen,          bg: '#EFF6FF', color: '#3B82F6', label: 'Messages Lus',       value: messagesLus !== null ? messagesLus.toLocaleString('fr-FR') : '—', trend: null },
     { icon: MousePointerClick, bg: '#FDF2F8', color: '#EC4899', label: 'Clics Totaux',       value: kpis?.totalClicks != null ? kpis.totalClicks.toLocaleString('fr-FR') : '—', trend: null },
     { icon: XCircle,           bg: '#FEF2F2', color: '#EF4444', label: 'Échecs',             value: loading ? '…' : totalFailed.toLocaleString('fr-FR'), trend: null },
-    { icon: DollarSign,        bg: '#F0FDF4', color: '#16A34A', label: 'Coût Total',         value: kpis ? `$${kpis.totalCost.toFixed(2)}` : '—', trend: null },
+    { icon: DollarSign,        bg: '#F0FDF4', color: '#16A34A', label: 'Coût Total',         value: kpis ? `${kpis.totalCost.toFixed(2)}${kpis.costCurrency ? ` ${kpis.costCurrency}` : ''}` : '—', trend: null },
   ]
 
   return (

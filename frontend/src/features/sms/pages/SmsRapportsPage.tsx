@@ -28,6 +28,7 @@ interface AnalyticsKpis {
   successRate: number
   uniqueRecipients: number
   totalCost: number
+  costCurrency: string | null
 }
 
 const COUNTRY_COLORS = ['#F4511E', '#3B82F6', '#10B981', '#EC4899', '#F59E0B', '#8B5CF6', '#06B6D4']
@@ -169,7 +170,7 @@ export default function SmsRapportsPage() {
             icon: Activity,
             gradient: 'linear-gradient(135deg, #A855F7, #7C3AED)',
             label: 'Coût Total',
-            value: kpis ? `$${kpis.totalCost.toFixed(2)}` : '—',
+            value: kpis ? `${kpis.totalCost.toFixed(2)}${kpis.costCurrency ? ` ${kpis.costCurrency}` : ''}` : '—',
             sub: avgDeliverySec !== null ? `Livraison moy: ${avgDeliverySec}s` : 'Livraison moy: —',
           },
         ].map(({ icon: Icon, gradient, label, value, sub }) => (
