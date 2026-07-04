@@ -15,7 +15,8 @@ interface CreditsData {
   transactions: {
     id: number
     type: 'debit' | 'credit'
-    amount: number
+    // DECIMAL MySQL → mysql2 renvoie une string, pas un number
+    amount: number | string
     sms_count: number
     description: string | null
     campaign_name: string | null
@@ -139,7 +140,7 @@ export default function SmsCreditsComptePage() {
                         </td>
                         <td className="px-5 py-2.5 text-right text-gray-600">{tx.sms_count.toLocaleString()}</td>
                         <td className={`px-5 py-2.5 text-right font-semibold ${tx.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
-                          {tx.type === 'credit' ? '+' : '−'}{tx.amount.toFixed(4)}{data?.currency ? ` ${data.currency}` : ''}
+                          {tx.type === 'credit' ? '+' : '−'}{Number(tx.amount).toFixed(4)}{data?.currency ? ` ${data.currency}` : ''}
                         </td>
                       </tr>
                     ))}

@@ -15,7 +15,8 @@ interface TxData {
   transactions: {
     id: number
     type: 'debit' | 'credit'
-    amount: number
+    // DECIMAL MySQL → mysql2 renvoie une string, pas un number
+    amount: number | string
     sms_count: number
     description: string | null
     campaign_name: string | null
@@ -48,7 +49,7 @@ export default function SmsRapportTransactionsPage() {
     const rows = data.transactions.map(tx =>
       [fmt(tx.created_at), tx.type === 'credit' ? 'Crédit' : 'Débit',
        tx.campaign_name ?? '—', `"${(tx.description ?? '—').replace(/"/g, '""')}"`,
-       tx.sms_count, `${tx.type === 'credit' ? '+' : '-'}${tx.amount.toFixed(4)}`].join(';')
+       tx.sms_count, `${tx.type === 'credit' ? '+' : '-'}${Number(tx.amount).toFixed(4)}`].join(';')
     ).join('\n')
     const blob = new Blob(['﻿' + header + '\n' + rows], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -89,7 +90,7 @@ export default function SmsRapportTransactionsPage() {
                 <Icon size={26} className="mb-3 text-white/80" />
                 <p className="text-[13px] text-white/85">{label}</p>
                 <p className="mt-1 text-[26px] font-bold">
-                  {(data?.[key as keyof TxData] as number ?? 0).toFixed(2)}
+                  {Number(data?.[key as keyof TxData] ?? 0).toFixed(2)}
                   {data?.currency ? <span className="ml-1 text-[15px] font-semibold text-white/85">{data.currency}</span> : null}
                 </p>
               </div>
@@ -141,7 +142,7 @@ export default function SmsRapportTransactionsPage() {
                         </td>
                         <td className="px-5 py-2.5 text-right text-gray-600">{tx.sms_count.toLocaleString()}</td>
                         <td className={`px-5 py-2.5 text-right font-semibold ${tx.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
-                          {tx.type === 'credit' ? '+' : '−'}{tx.amount.toFixed(4)}{data?.currency ? ` ${data.currency}` : ''}
+                          {tx.type === 'credit' ? '+' : '−'}{Number(tx.amount).toFixed(4)}{data?.currency ? ` ${data.currency}` : ''}
                         </td>
                       </tr>
                     ))}
