@@ -358,7 +358,9 @@ export const smsService = {
     if (!campaign) throw new Error('Campagne introuvable')
 
     // Associe les liens courts présents dans le message à cette campagne (taux de clic par campagne)
-    const linkCodes = [...campaign.message.matchAll(/\/sms\/r\/([A-Za-z0-9_-]{3,30})/g)].map(m => m[1])
+    // Deux formats acceptés : /api/v1/sms/r/CODE (ancien) et /r/CODE (raccourci nginx)
+    // Un faux positif (ex: reddit.com/r/xxx) est inoffensif : le WHERE code IN ne matchera rien
+    const linkCodes = [...campaign.message.matchAll(/\/(?:sms\/)?r\/([A-Za-z0-9_-]{3,30})/g)].map(m => m[1])
     if (linkCodes.length > 0) {
       await pool.query(
         'UPDATE sms_short_links SET campaign_id = ? WHERE tenant_id = ? AND code IN (?)',

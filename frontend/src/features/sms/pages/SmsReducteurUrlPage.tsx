@@ -11,15 +11,13 @@ const TABS = ['+ Créer un lien', 'Mes liens', 'Analytics', 'Domaines'] as const
 type Tab = typeof TABS[number]
 
 // Base URL du redirect — DOIT être absolue (https://...) pour être cliquable dans un SMS.
-// En prod VITE_API_URL est relatif ("/api/v1" derrière nginx) → on l'absolutise avec le domaine courant.
-const REDIRECT_BASE = (() => {
-  const raw = (import.meta.env.VITE_API_URL as string ?? 'http://localhost:5000/api/v1').replace(/\/+$/, '')
-  try {
-    return new URL(raw, window.location.origin).toString().replace(/\/+$/, '')
-  } catch {
-    return raw
-  }
-})()
+// En prod VITE_API_URL est relatif ("/api/v1" derrière nginx) → on sert le chemin raccourci
+// https://domaine/r/CODE (règle nginx /r/ → backend) pour économiser les caractères SMS.
+// En dev VITE_API_URL est absolu → on tape le backend en direct (pas de nginx).
+const RAW_API = (import.meta.env.VITE_API_URL as string ?? 'http://localhost:5000/api/v1').replace(/\/+$/, '')
+const REDIRECT_BASE = /^https?:\/\//.test(RAW_API)
+  ? `${RAW_API}/sms/r`
+  : `${window.location.origin}/r`
 const REDIRECT_HOST = (() => {
   try { return new URL(REDIRECT_BASE).host } catch { return REDIRECT_BASE }
 })()
@@ -129,7 +127,7 @@ export default function SmsReducteurUrlPage() {
   }
 
   function shortUrl(link: SmsShortLink) {
-    return `${REDIRECT_BASE}/sms/r/${link.code}`
+    return `${REDIRECT_BASE}/${link.code}`
   }
 
   function handleCopy(text: string, id: number | 'new') {
