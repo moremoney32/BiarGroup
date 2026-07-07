@@ -88,8 +88,15 @@ export const infobipService = {
           destinations: phones.map(p => ({ to: p.replace(/^\+/, '') })),
           sender: params.from || process.env.INFOBIP_SENDER || 'BIAR',
           content: { text: params.message },
-          notifyUrl: `${(process.env.API_BASE_URL ?? 'https://biargroup.sbs').replace(/\/+$/, '')}/api/v1/sms/dlr?token=${process.env.INFOBIP_DLR_SECRET}`,
-          notifyContentType: 'application/json',
+          // API v3 : le DLR se déclare via webhooks.delivery.url — notifyUrl est
+          // un champ de l'ancienne API, ignoré silencieusement par /sms/3/messages
+          // (confirmé par le support Infobip, ticket IB#4492484)
+          webhooks: {
+            delivery: {
+              url: `${(process.env.API_BASE_URL ?? 'https://biargroup.sbs').replace(/\/+$/, '')}/api/v1/sms/dlr?token=${process.env.INFOBIP_DLR_SECRET}`,
+            },
+            contentType: 'application/json',
+          },
         }],
       },
       {
