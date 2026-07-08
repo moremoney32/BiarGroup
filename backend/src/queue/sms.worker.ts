@@ -175,6 +175,8 @@ dlrPollingQueue.process('poll', 1, async () => {
   const { infobipService } = await import('../services/infobip.service')
   if (!infobipService.isConfigured()) return
 
+  const { smsService } = await import('../services/sms.service')
+
   // Des messages attendent-ils encore leur DLR ? (fenêtre 48h — au-delà le DLR n'arrivera plus)
   const [[{ pending }]] = await pool.execute<import('mysql2').RowDataPacket[]>(
     `SELECT COUNT(*) as pending FROM sms_messages
@@ -182,35 +184,40 @@ dlrPollingQueue.process('poll', 1, async () => {
        AND sent_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
        AND deleted_at IS NULL`
   )
-  if (Number(pending) === 0) return
+  if (Number(pending) > 0) {
+    // Jusqu'à 4 pages de 250 rapports par tick — borne la charge en cas de gros backlog
+    let totalProcessed = 0
+    for (let page = 0; page < 4; page++) {
+      const results = await infobipService.getDeliveryReports(250)
+      if (results.length === 0) break
 
-  const { smsService } = await import('../services/sms.service')
-
-  // Jusqu'à 4 pages de 250 rapports par tick — borne la charge en cas de gros backlog
-  let totalProcessed = 0
-  for (let page = 0; page < 4; page++) {
-    const results = await infobipService.getDeliveryReports(250)
-    if (results.length === 0) break
-
-    for (const result of results) {
-      if (!result.messageId) continue
-      const failureReason = result.error?.groupName !== 'OK' ? result.error?.groupName : undefined
-      await smsService.handleDlr(result.messageId, result.status.groupName, failureReason, {
-        mccMnc:    result.mccMnc,
-        errorCode: result.error?.id,
-        errorName: result.error?.name,
-        doneAt:    result.doneAt,
-        sentAt:    result.sentAt,
-        cost:      result.price?.pricePerMessage,
-        currency:  result.price?.currency,
-      })
+      for (const result of results) {
+        if (!result.messageId) continue
+        const failureReason = result.error?.groupName !== 'OK' ? result.error?.groupName : undefined
+        await smsService.handleDlr(result.messageId, result.status.groupName, failureReason, {
+          mccMnc:    result.mccMnc,
+          errorCode: result.error?.id,
+          errorName: result.error?.name,
+          doneAt:    result.doneAt,
+          sentAt:    result.sentAt,
+          cost:      result.price?.pricePerMessage,
+          currency:  result.price?.currency,
+        })
+      }
+      totalProcessed += results.length
+      if (results.length < 250) break
     }
-    totalProcessed += results.length
-    if (results.length < 250) break
+
+    if (totalProcessed > 0) {
+      console.log(`[DLR POLLING] ✅ ${totalProcessed} rapport(s) traité(s) — ${pending} message(s) en attente avant le tick`)
+    }
   }
 
-  if (totalProcessed > 0) {
-    console.log(`[DLR POLLING] ✅ ${totalProcessed} rapport(s) traité(s) — ${pending} message(s) en attente avant le tick`)
+  // Le webhook pousse souvent le DLR AVANT la résolution réseau (mccMnc absent) :
+  // on complète operator/cost a posteriori via /sms/1/logs (non consommant)
+  const enriched = await smsService.enrichOperatorsFromLogs()
+  if (enriched > 0) {
+    console.log(`[DLR POLLING] ✅ ${enriched} opérateur(s) complété(s) via /sms/1/logs`)
   }
 })
 

@@ -143,6 +143,31 @@ export const infobipService = {
     return data.results ?? []
   },
 
+  /**
+   * Logs d'envoi (GET /sms/1/logs) — NON consommant, rétention ~48h.
+   * Contient le mccMnc et le prix même quand le webhook DLR pousse le rapport
+   * avant que la résolution réseau soit faite côté Infobip.
+   */
+  async getLogs(messageIds: string[]): Promise<InfobipDlrPayload['results']> {
+    if (messageIds.length === 0) return []
+    const { apiKey, baseUrl } = getConfig()
+
+    // paramètre messageId répété — axios sérialise les tableaux en messageId[]=, Infobip n'en veut pas
+    const qs = messageIds.map(id => `messageId=${encodeURIComponent(id)}`).join('&')
+    const { data } = await axios.get<InfobipDlrPayload>(
+      `https://${baseUrl}/sms/1/logs?${qs}`,
+      {
+        headers: {
+          Authorization: `App ${apiKey}`,
+          Accept: 'application/json',
+        },
+        timeout: 30_000,
+      }
+    )
+
+    return data.results ?? []
+  },
+
   isConfigured(): boolean {
     return Boolean(process.env.INFOBIP_API_KEY && process.env.INFOBIP_BASE_URL)
   },

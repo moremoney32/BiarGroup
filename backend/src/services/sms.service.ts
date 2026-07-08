@@ -105,15 +105,21 @@ async function sendSenderIdNotification(params: {
 
 function resolveOperator(mccMnc: string): string {
   const map: Record<string, string> = {
-    '63001': 'Vodacom', '630001': 'Vodacom',
-    '63005': 'Airtel',  '630005': 'Airtel',
-    '63010': 'Orange',  '630010': 'Orange',
-    '63086': 'Africell','630086': 'Africell',
-    '62401': 'MTN',     '624001': 'MTN',
-    '62402': 'Vodafone','624002': 'Vodafone',
+    // RDC (630) — ITU : 01 Vodacom, 02 Airtel, 05 Supercell, 86/89 Orange (ex-CCT/Tigo), 90 Africell
+    '63001': 'Vodacom',  '630001': 'Vodacom',
+    '63002': 'Airtel',   '630002': 'Airtel',
+    '63005': 'Supercell','630005': 'Supercell',
+    '63086': 'Orange',   '630086': 'Orange',
+    '63089': 'Orange',   '630089': 'Orange',
+    '63090': 'Africell', '630090': 'Africell',
+    // Cameroun (624) — 01 MTN, 02 Orange, 04 Nexttel
+    '62401': 'MTN',      '624001': 'MTN',
+    '62402': 'Orange',   '624002': 'Orange',
+    '62404': 'Nexttel',  '624004': 'Nexttel',
+    // France (numéros de test)
     '20801': 'Orange FR','208001': 'Orange FR',
-    '20810': 'SFR',     '208010': 'SFR',
-    '20820': 'Bouygues','208020': 'Bouygues',
+    '20810': 'SFR',      '208010': 'SFR',
+    '20820': 'Bouygues', '208020': 'Bouygues',
   }
   return map[mccMnc] ?? `Opérateur (${mccMnc})`
 }
@@ -608,6 +614,50 @@ export const smsService = {
         [msg.campaign_id]
       )
     }
+  },
+
+  /**
+   * Complète operator/cost des messages dont le DLR est arrivé sans mccMnc
+   * (le webhook v3 pousse parfois le rapport avant la résolution réseau).
+   * Source : GET /sms/1/logs — non consommant, rétention ~48h côté Infobip.
+   */
+  async enrichOperatorsFromLogs(): Promise<number> {
+    const { infobipService } = await import('./infobip.service')
+    if (!infobipService.isConfigured()) return 0
+
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      `SELECT id, at_message_id FROM sms_messages
+       WHERE status IN ('delivered','undelivered') AND operator IS NULL
+         AND at_message_id IS NOT NULL
+         AND updated_at >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+         AND deleted_at IS NULL
+       ORDER BY id DESC LIMIT 100`
+    )
+    if (rows.length === 0) return 0
+
+    const idByMessageId = new Map(rows.map(r => [String(r.at_message_id), Number(r.id)]))
+    const ids = [...idByMessageId.keys()]
+    let enriched = 0
+
+    // lots de 20 messageId pour garder l'URL courte
+    for (let i = 0; i < ids.length; i += 20) {
+      const logs = await infobipService.getLogs(ids.slice(i, i + 20))
+      for (const log of logs) {
+        const msgId = idByMessageId.get(log.messageId)
+        if (!msgId || !log.mccMnc) continue
+        await pool.execute(
+          `UPDATE sms_messages
+           SET operator = ?,
+               cost = COALESCE(cost, ?),
+               cost_currency = COALESCE(cost_currency, ?),
+               updated_at = NOW()
+           WHERE id = ?`,
+          [resolveOperator(log.mccMnc), log.price?.pricePerMessage ?? null, log.price?.currency ?? null, msgId]
+        )
+        enriched++
+      }
+    }
+    return enriched
   },
 
   // ── Templates ────────────────────────────────────────────────
