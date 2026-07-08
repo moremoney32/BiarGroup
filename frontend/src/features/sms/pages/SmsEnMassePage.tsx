@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useLocation, Link as RouterLink } from 'react-router-dom'
 import {
   Send, CheckCircle2, XCircle, TrendingUp, Plus, ChevronDown,
-  Zap, Settings2, Loader2, Trash2, Play, Eye, X, Clock,
-  AlertCircle, RefreshCw, Users, List, Pencil,
+  Zap, Settings2, Loader2, Trash2, Play, X, Clock,
+  AlertCircle, RefreshCw, Users, List, Pencil, Filter,
+  Download, FileText, Upload, BarChart3, MessageSquare, UserPlus,
 } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer,
+  ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
@@ -30,14 +31,15 @@ function calcSms(text: string) {
 // ── Statut campagne ───────────────────────────────────────────
 
 function StatusBadge({ status }: { status: CampaignStatus }) {
+  // Libellés maquette : Terminé / En cours / Planifié
   const map: Record<CampaignStatus, { label: string; bg: string; color: string }> = {
-    draft:     { label: 'Brouillon',     bg: '#F3F4F6', color: '#6B7280' },
-    queued:    { label: 'En file',       bg: '#FFF7ED', color: '#EA580C' },
-    sending:   { label: 'Envoi en cours',bg: '#EFF6FF', color: '#2563EB' },
-    sent:      { label: 'Envoyé',        bg: '#F0FDF4', color: '#16A34A' },
-    failed:    { label: 'Échoué',        bg: '#FEF2F2', color: '#DC2626' },
-    cancelled: { label: 'Annulé',        bg: '#F9FAFB', color: '#9CA3AF' },
-    scheduled: { label: 'Programmé',     bg: '#F5F3FF', color: '#7C3AED' },
+    draft:     { label: 'Brouillon', bg: '#F3F4F6', color: '#6B7280' },
+    queued:    { label: 'En cours',  bg: '#DBEAFE', color: '#2563EB' },
+    sending:   { label: 'En cours',  bg: '#DBEAFE', color: '#2563EB' },
+    sent:      { label: 'Terminé',   bg: '#DCFCE7', color: '#16A34A' },
+    failed:    { label: 'Échoué',    bg: '#FEE2E2', color: '#DC2626' },
+    cancelled: { label: 'Annulé',    bg: '#F3F4F6', color: '#9CA3AF' },
+    scheduled: { label: 'Planifié',  bg: '#FED7AA', color: '#C2410C' },
   }
   const s = map[status] ?? map.draft
   return (
@@ -51,9 +53,39 @@ function StatusBadge({ status }: { status: CampaignStatus }) {
 
 function fmtNum(n: number) { return n.toLocaleString('fr-FR') }
 function fmtDate(iso: string) { return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) }
-function deliveryRate(c: SmsCampaign) {
-  if (!c.total_sent) return '—'
-  return `${Math.round((c.total_delivered / c.total_sent) * 100)}%`
+// Format maquette : "2026-02-14"
+function fmtDateIso(iso: string) { return new Date(iso).toISOString().slice(0, 10) }
+
+// Libellés type en minuscules comme sur la maquette ("marketing • 2026-02-14")
+const TYPE_LABEL: Record<CampaignType, string> = {
+  promotional:   'marketing',
+  transactional: 'transactionnel',
+  otp:           'otp',
+  notification:  'notification',
+}
+
+// Export CSV de la page courante
+function exportCampaignsCsv(campaigns: SmsCampaign[]) {
+  const sep = ';'
+  const header = ['ID', 'Nom', 'Type', 'Statut', 'Envoyés', 'Délivrés', 'Clics', 'Date']
+  const rows = campaigns.map(c => [
+    c.id,
+    `"${c.name.replace(/"/g, '""')}"`,
+    TYPE_LABEL[c.campaign_type] ?? c.campaign_type,
+    c.status,
+    c.total_sent,
+    c.total_delivered,
+    c.total_clicks ?? 0,
+    fmtDateIso(c.sent_at ?? c.created_at),
+  ])
+  const csv = [header.join(sep), ...rows.map(r => r.join(sep))].join('\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `campagnes-sms-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 // ── Modal création campagne ────────────────────────────────────
@@ -476,6 +508,7 @@ function CampagnesTab({ senderIds, lists, templates, initialMessage = '', openNe
   const [sending, setSending]     = useState<number | null>(null)
   const [deleting, setDeleting]   = useState<number | null>(null)
   const [showNew, setShowNew]     = useState(initialMessage !== '')
+  const [showFilters, setShowFilters] = useState(false)
   const [editCamp, setEditCamp]   = useState<SmsCampaign | null>(null)
   const [viewCampaign, setView]   = useState<SmsCampaign | null>(null)
   const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null)
@@ -565,29 +598,38 @@ function CampagnesTab({ senderIds, lists, templates, initialMessage = '', openNe
         </div>
       )}
 
-      {/* Toolbar */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1">
-          {STATUSES.map(s => (
-            <button key={s.value} onClick={() => { setStatus(s.value); setPage(1) }}
-              className={`rounded-xl px-3 py-1.5 text-[11px] font-medium transition-colors ${statusFilter === s.value ? 'bg-[#F4511E] text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-              {s.label}
+      {/* Bloc Campagnes Récentes — maquette : cartes saumon */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-[17px] font-bold text-[#1F2937]">Campagnes Récentes</h3>
+          <div className="flex gap-2">
+            <button onClick={() => setShowFilters(f => !f)} title="Filtrer par statut"
+              className={`rounded-full border p-2.5 transition-colors ${showFilters || statusFilter ? 'border-[#F4511E] text-[#F4511E] bg-orange-50' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+              <Filter size={14} />
             </button>
-          ))}
+            <button onClick={() => exportCampaignsCsv(campaigns)} disabled={campaigns.length === 0}
+              title="Exporter en CSV"
+              className="rounded-full border border-gray-200 p-2.5 text-gray-500 hover:bg-gray-50 disabled:opacity-40">
+              <Download size={14} />
+            </button>
+            <button onClick={() => fetchCampaigns(page, statusFilter)} title="Actualiser"
+              className="rounded-full border border-gray-200 p-2.5 text-gray-500 hover:bg-gray-50">
+              <RefreshCw size={14} />
+            </button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => fetchCampaigns(page, statusFilter)} className="rounded-xl border border-gray-200 p-2 text-gray-500 hover:bg-gray-50">
-            <RefreshCw size={13} />
-          </button>
-          <button onClick={() => setShowNew(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-4 py-2 text-[12px] font-bold text-white hover:bg-[#d9400f]">
-            <Plus size={13} /> Nouvelle campagne
-          </button>
-        </div>
-      </div>
 
-      {/* Table */}
-      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        {showFilters && (
+          <div className="mb-4 flex flex-wrap gap-1">
+            {STATUSES.map(s => (
+              <button key={s.value} onClick={() => { setStatus(s.value); setPage(1) }}
+                className={`rounded-xl px-3 py-1.5 text-[11px] font-medium transition-colors ${statusFilter === s.value ? 'bg-[#F4511E] text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 size={20} className="animate-spin text-gray-300" />
@@ -603,73 +645,73 @@ function CampagnesTab({ senderIds, lists, templates, initialMessage = '', openNe
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-50 bg-gray-50/60">
-                  {['Campagne', 'Sender ID', 'Statut', 'Destinataires', 'Envoyés', 'Livrés', 'Taux', 'Date', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400 whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {campaigns.map(c => (
-                  <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                    <td className="px-4 py-3 max-w-[180px]">
-                      <p className="text-[12px] font-semibold text-[#1F2937] truncate">{c.name}</p>
-                      <p className="text-[10px] text-gray-400 truncate">{c.message.slice(0, 40)}{c.message.length > 40 ? '…' : ''}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-lg bg-[#FFF7ED] px-2 py-0.5 text-[11px] font-bold text-[#EA580C]">{c.sender_id}</span>
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
-                    <td className="px-4 py-3 text-[12px] font-semibold text-[#1F2937]">{fmtNum(c.total_recipients)}</td>
-                    <td className="px-4 py-3 text-[12px] text-gray-600">{fmtNum(c.total_sent)}</td>
-                    <td className="px-4 py-3 text-[12px] text-[#16A34A] font-semibold">{fmtNum(c.total_delivered)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-[12px] font-bold ${c.total_sent > 0 ? 'text-[#16A34A]' : 'text-gray-400'}`}>
-                        {deliveryRate(c)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-[11px] text-gray-400 whitespace-nowrap">
-                      {c.sent_at ? fmtDate(c.sent_at) : fmtDate(c.created_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        {canSend(c) && (
-                          <button onClick={() => handleSend(c)} disabled={sending === c.id} title="Envoyer"
-                            className="rounded-lg p-1.5 text-[#22C55E] hover:bg-green-50 disabled:opacity-40 transition-colors">
-                            {sending === c.id ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-                          </button>
-                        )}
-                        {canEdit(c) && (
-                          <button onClick={() => setEditCamp(c)} title="Modifier"
-                            className="rounded-lg p-1.5 text-[#7C3AED] hover:bg-purple-50 transition-colors">
-                            <Pencil size={13} />
-                          </button>
-                        )}
-                        <button title="Voir détails" onClick={() => setView(c)}
-                          className="rounded-lg p-1.5 text-[#3B82F6] hover:bg-blue-50 transition-colors">
-                          <Eye size={13} />
-                        </button>
-                        {canDelete(c) && (
-                          <button onClick={() => handleDelete(c)} disabled={deleting === c.id} title="Supprimer"
-                            className="rounded-lg p-1.5 text-[#EF4444] hover:bg-red-50 disabled:opacity-40 transition-colors">
-                            {deleting === c.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            {campaigns.map(c => (
+              <div key={c.id}
+                className="flex flex-col gap-3 rounded-2xl bg-[#F8A583] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                {/* Gauche : icône + nom + statut + type/date */}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white">
+                    <MessageSquare size={17} className="text-[#F4511E]" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-[14px] font-bold text-[#1F2937] truncate">{c.name}</p>
+                      <StatusBadge status={c.status} />
+                    </div>
+                    <p className="mt-0.5 text-[12px] text-[#7C2D12]/70">
+                      {TYPE_LABEL[c.campaign_type] ?? c.campaign_type} • {fmtDateIso(c.sent_at ?? c.created_at)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Droite : stats + actions */}
+                <div className="flex items-center gap-5 shrink-0">
+                  <div className="text-center">
+                    <p className="text-[12px] font-semibold text-[#1F2937]">Envoyés</p>
+                    <p className="text-[15px] font-bold text-[#1F2937]">{fmtNum(c.total_sent)}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[12px] font-semibold text-[#1F2937]">Délivrés</p>
+                    <p className="text-[15px] font-bold text-[#15803D]">{fmtNum(c.total_delivered)}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[12px] font-semibold text-[#1F2937]">Clics</p>
+                    <p className="text-[15px] font-bold text-[#1D4ED8]">{fmtNum(c.total_clicks ?? 0)}</p>
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    <button title="Voir les statistiques" onClick={() => setView(c)}
+                      className="rounded-lg p-1.5 text-[#1F2937] hover:bg-white/40 transition-colors">
+                      <BarChart3 size={15} />
+                    </button>
+                    {canSend(c) && (
+                      <button onClick={() => handleSend(c)} disabled={sending === c.id} title="Envoyer"
+                        className="rounded-lg p-1.5 text-[#15803D] hover:bg-white/40 disabled:opacity-40 transition-colors">
+                        {sending === c.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                      </button>
+                    )}
+                    {canEdit(c) && (
+                      <button onClick={() => setEditCamp(c)} title="Modifier"
+                        className="rounded-lg p-1.5 text-[#1F2937] hover:bg-white/40 transition-colors">
+                        <Pencil size={14} />
+                      </button>
+                    )}
+                    {canDelete(c) && (
+                      <button onClick={() => handleDelete(c)} disabled={deleting === c.id} title="Supprimer"
+                        className="rounded-lg p-1.5 text-[#B91C1C] hover:bg-white/40 disabled:opacity-40 transition-colors">
+                        {deleting === c.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
         {/* Pagination */}
         {meta && meta.lastPage > 1 && (
-          <div className="flex items-center justify-between border-t border-gray-50 px-5 py-3">
+          <div className="mt-4 flex items-center justify-between border-t border-gray-50 pt-3">
             <span className="text-[11px] text-gray-400">Page {meta.page} / {meta.lastPage} — {fmtNum(meta.total)} campagne(s)</span>
             <div className="flex gap-1">
               <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
@@ -727,13 +769,19 @@ type Tab = typeof TABS[number]
 
 const PERIODS = ['Derniers 7 jours', 'Derniers 30 jours', 'Derniers 90 jours'] as const
 
-// Répartition opérateur : en attente des DLR Infobip (webhook notifyUrl — ticket IB#4492484)
-const OPERATORS = [
-  { name: 'Vodacom',  color: '#EF4444' },
-  { name: 'Airtel',   color: '#F59E0B' },
-  { name: 'Orange',   color: '#F97316' },
-  { name: 'Africell', color: '#3B82F6' },
-]
+// Couleurs donut opérateurs (données réelles des DLR)
+const OPERATOR_COLORS: Record<string, string> = {
+  Vodacom:  '#EF4444',
+  Airtel:   '#F59E0B',
+  Orange:   '#F97316',
+  Africell: '#3B82F6',
+  MTN:      '#FACC15',
+  Nexttel:  '#8B5CF6',
+  Camtel:   '#10B981',
+}
+const FALLBACK_COLORS = ['#3B82F6', '#EF4444', '#F59E0B', '#8B5CF6', '#10B981', '#EC4899']
+
+interface OperatorStat { operator: string; delivered: number; failed: number }
 
 const fadeUp = {
   initial: { opacity: 0, y: 20 },
@@ -765,6 +813,9 @@ export default function SmsEnMassePage() {
   const [byHour, setByHour]       = useState<{ hour: string; count: number }[]>([])
   // Taux de clic réel (liens courts — endpoint analytics/kpis)
   const [clickRate, setClickRate] = useState<number | null>(null)
+  // Répartition par opérateur (DLR réels) + stats contacts globales
+  const [byOperator, setByOperator] = useState<OperatorStat[]>([])
+  const [contactStats, setContactStats] = useState<{ total: number; active: number; optedOut: number } | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -774,15 +825,26 @@ export default function SmsEnMassePage() {
       smsService.getAnalyticsOverview().catch(() => null),
       api.get<{ data: { byHour: { hour: string; count: number }[] } }>('/sms/analytics/rapports?period=7j').catch(() => null),
       api.get<{ data: { clickRate?: number } }>('/sms/analytics/kpis').catch(() => null),
-    ]).then(([ids, ls, tpls, ov, rap, kpis]) => {
+      api.get<{ data: { byOperator: OperatorStat[] } }>('/sms/analytics/dlr?limit=1').catch(() => null),
+      api.get<{ data: { total: number; active: number; optedOut: number } }>('/sms/contact-stats').catch(() => null),
+    ]).then(([ids, ls, tpls, ov, rap, kpis, dlr, cstats]) => {
       setSenderIds(ids.filter((s: SmsSenderId) => s.status === 'approved'))
       setLists(ls)
       setTemplates(tpls)
       if (ov) setOverview(ov as typeof overview)
       if (rap) setByHour(rap.data.byHour)
       if (kpis?.data.clickRate != null) setClickRate(kpis.data.clickRate)
+      if (dlr?.data.byOperator) setByOperator(dlr.data.byOperator)
+      if (cstats) setContactStats(cstats.data)
     }).finally(() => setInit(false))
   }, [])
+
+  const operatorPie = byOperator.map((op, i) => ({
+    name:  op.operator,
+    value: op.delivered + op.failed,
+    color: OPERATOR_COLORS[op.operator] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length],
+  }))
+  const operatorTotal = operatorPie.reduce((s, o) => s + o.value, 0)
 
   const failRate = overview.totalSent > 0
     ? Math.round((overview.totalFailed / overview.totalSent) * 1000) / 10
@@ -888,21 +950,40 @@ export default function SmsEnMassePage() {
           </div>
           <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
             <h3 className="mb-1 text-[14px] font-bold text-[#1F2937]">Par Opérateur</h3>
-            <p className="mb-3 text-[11px] text-gray-400">Répartition des envois</p>
-            <div className="flex h-[160px] flex-col items-center justify-center gap-3 rounded-xl bg-gray-50 px-4 text-center">
+            <p className="mb-3 text-[11px] text-gray-400">Répartition des envois (accusés de livraison)</p>
+            {operatorPie.length > 0 ? (
               <div className="flex items-center gap-4">
-                {OPERATORS.map(op => (
-                  <div key={op.name} className="flex flex-col items-center gap-1">
-                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: op.color }} />
-                    <span className="text-[9px] text-gray-500">{op.name}</span>
-                  </div>
-                ))}
+                <ResponsiveContainer width="55%" height={160}>
+                  <PieChart>
+                    <Pie data={operatorPie} cx="50%" cy="50%" innerRadius={42} outerRadius={68}
+                      dataKey="value" stroke="none" paddingAngle={2}>
+                      {operatorPie.map((e, i) => <Cell key={i} fill={e.color} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => [v, 'SMS']} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex-1 space-y-1.5">
+                  {operatorPie.map(({ name, value, color }) => (
+                    <div key={name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+                        <span className="text-[11px] text-gray-600">{name}</span>
+                      </div>
+                      <span className="text-[11px] font-bold text-[#1F2937]">
+                        {operatorTotal > 0 ? Math.round((value / operatorTotal) * 100) : 0}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <p className="text-[11px] font-semibold text-gray-400">En attente des DLR Infobip</p>
-              <p className="text-[10px] text-gray-400 max-w-[240px]">
-                La répartition par opérateur sera disponible dès réception des accusés de livraison (webhook notifyUrl)
-              </p>
-            </div>
+            ) : (
+              <div className="flex h-[160px] flex-col items-center justify-center gap-2 rounded-xl bg-gray-50 px-4 text-center">
+                <p className="text-[11px] font-semibold text-gray-400">Aucun accusé de livraison pour l'instant</p>
+                <p className="text-[10px] text-gray-400 max-w-[240px]">
+                  La répartition apparaîtra automatiquement dès les premiers DLR reçus
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -922,50 +1003,85 @@ export default function SmsEnMassePage() {
         )}
 
         {activeTab === 'Contacts' && (
-          <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between border-b border-gray-50 px-5 py-3">
-              <h3 className="text-[14px] font-bold text-[#1F2937]">Listes de contacts</h3>
-              <RouterLink to="/app/sms/contacts"
-                className="flex items-center gap-1.5 rounded-xl border border-[#F4511E] px-3 py-1.5 text-[11px] font-semibold text-[#F4511E] hover:bg-orange-50">
-                <Users size={12} /> Gérer les contacts
-              </RouterLink>
+          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            {/* Header maquette : titre + Importer + Nouveau Groupe */}
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="text-[17px] font-bold text-[#1F2937]">Gestion des Contacts</h3>
+              <div className="flex gap-2">
+                <RouterLink to="/app/sms/contacts"
+                  className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-[13px] font-semibold text-gray-700 hover:bg-gray-50">
+                  <Upload size={14} /> Importer
+                </RouterLink>
+                <RouterLink to="/app/sms/listes"
+                  className="flex items-center gap-2 rounded-xl bg-[#F4511E] px-4 py-2.5 text-[13px] font-bold text-white hover:bg-[#d9400f]">
+                  <UserPlus size={14} /> Nouveau Groupe
+                </RouterLink>
+              </div>
             </div>
+
+            {/* KPI maquette : 3 cartes saumon */}
+            <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {[
+                { icon: Users,        color: '#F4511E', label: 'Total Contacts', value: contactStats?.total },
+                { icon: CheckCircle2, color: '#16A34A', label: 'Actifs',         value: contactStats?.active },
+                { icon: XCircle,      color: '#DC2626', label: 'Désabonnés',     value: contactStats?.optedOut },
+              ].map(({ icon: Icon, color, label, value }) => (
+                <div key={label} className="flex flex-col items-center justify-center gap-2 rounded-2xl bg-[#F8A583] py-8">
+                  <Icon size={26} style={{ color }} />
+                  <p className="text-[26px] font-bold text-[#1F2937]">
+                    {value != null ? fmtNum(value) : '—'}
+                  </p>
+                  <p className="text-[13px] text-[#1F2937]">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Listes de contacts (détail) */}
             {lists.length === 0 ? (
-              <div className="py-12 text-center text-[12px] text-gray-400">
+              <div className="py-10 text-center text-[12px] text-gray-400">
                 Aucune liste — créez-en une dans Gestion des Listes
               </div>
             ) : (
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-50 bg-gray-50/60">
-                    {['Liste', 'Contacts', 'Créée le'].map(h => (
-                      <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {lists.map(l => (
-                    <tr key={l.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <List size={13} className="text-[#F4511E]" />
-                          <span className="text-[12px] font-semibold text-[#1F2937]">{l.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-[12px] text-gray-600">{fmtNum(l.contact_count)}</td>
-                      <td className="px-4 py-3 text-[11px] text-gray-400">{fmtDate(l.created_at)}</td>
+              <div className="rounded-xl border border-gray-100 overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-50 bg-gray-50/60">
+                      {['Liste', 'Contacts', 'Créée le'].map(h => (
+                        <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {lists.map(l => (
+                      <tr key={l.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <List size={13} className="text-[#F4511E]" />
+                            <span className="text-[12px] font-semibold text-[#1F2937]">{l.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-[12px] text-gray-600">{fmtNum(l.contact_count)}</td>
+                        <td className="px-4 py-3 text-[11px] text-gray-400">{fmtDate(l.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
 
         {activeTab === 'Templates' && (
           templates.length === 0 ? (
-            <div className="rounded-xl border border-gray-100 bg-white py-12 text-center text-[12px] text-gray-400 shadow-sm">
-              Aucun template — créez-en un dans Modèles SMS
+            /* État vide maquette : icône + titre + sous-titre + bouton */
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-100 bg-white py-16 text-center shadow-sm">
+              <FileText size={44} className="mb-4 text-[#1F2937]" strokeWidth={1.5} />
+              <h3 className="text-[19px] font-bold text-[#1F2937]">Templates de Messages</h3>
+              <p className="mt-1.5 text-[13px] text-gray-600">Créez et gérez vos modèles de messages réutilisables</p>
+              <RouterLink to="/app/sms/modeles"
+                className="mt-6 rounded-xl bg-[#F4511E] px-6 py-3 text-[13px] font-bold text-white hover:bg-[#d9400f]">
+                Créer un Template
+              </RouterLink>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -998,20 +1114,27 @@ export default function SmsEnMassePage() {
                 <span className="text-[15px] font-bold text-[#1F2937]">API REST</span>
               </div>
               <p className="mb-5 text-[12px] text-gray-600">Intégrez nos API pour envoyer des SMS depuis vos applications</p>
-              <button className="w-full rounded-xl bg-[#F4511E] py-3 text-[13px] font-bold text-white hover:bg-[#d9400f]">
+              <RouterLink to="/app/sms/documentation-api"
+                className="block w-full rounded-xl bg-[#F4511E] py-3 text-center text-[13px] font-bold text-white hover:bg-[#d9400f]">
                 Documentation API
-              </button>
+              </RouterLink>
             </div>
             <div className="rounded-2xl bg-[#FFE8D9] p-6">
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F4511E]/20">
-                  <Settings2 size={20} className="text-[#F4511E]" />
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F4511E]/20">
+                    <Settings2 size={20} className="text-[#F4511E]" />
+                  </div>
+                  <span className="text-[15px] font-bold text-[#1F2937]">Connexion SMPP</span>
                 </div>
-                <span className="text-[15px] font-bold text-[#1F2937]">Connexion SMPP</span>
+                <span className="rounded-full bg-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600">
+                  Pas encore prêt
+                </span>
               </div>
-              <p className="mb-5 text-[12px] text-gray-600">Configuration directe avec les opérateurs télécom</p>
-              <button className="w-full rounded-xl bg-[#F4511E] py-3 text-[13px] font-bold text-white hover:bg-[#d9400f]">
-                Configurer SMPP
+              <p className="mb-5 text-[12px] text-gray-600">Configuration directe avec les opérateurs télécom — bientôt disponible</p>
+              <button disabled title="La connexion SMPP directe n'est pas encore disponible"
+                className="w-full cursor-not-allowed rounded-xl bg-gray-300 py-3 text-[13px] font-bold text-gray-500">
+                Bientôt disponible
               </button>
             </div>
           </div>

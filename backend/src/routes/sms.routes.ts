@@ -83,6 +83,7 @@ router.delete('/scheduled/:id',  clientAndUp, smsController.cancelScheduled)
 
 // ── Listes de contacts SMS ───────────────────────────────────
 router.get('/contact-lists',                     smsController.getContactLists)
+router.get('/contact-stats',                     smsController.getContactsStats)
 router.post('/contact-lists',     clientAndUp,   smsController.createContactList)
 router.delete('/contact-lists/:id', clientAndUp, smsController.deleteContactList)
 router.get('/contact-lists/:id/contacts',        smsController.getContactsInList)

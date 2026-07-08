@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Send, CheckCircle2, Search, Download, Loader2, RefreshCw, Tag } from 'lucide-react'
+import {
+  Plus, Send, CheckCircle2, Search, Download, Loader2, RefreshCw, Tag,
+  MessageSquare, Building2, Shield, Filter, Eye, BarChart2, Trash2,
+} from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
 import type { SmsCampaign, SmsAnalyticsOverview, CampaignType } from '../../../types/sms.types'
@@ -9,21 +12,28 @@ import { motion } from 'framer-motion'
 const TABS = ['Campagnes A2P', 'Fournisseurs', 'Conformité'] as const
 type Tab = typeof TABS[number]
 
+// Libellés minuscules comme la maquette (promotional / otp / transactional)
 const TYPE_STYLE: Record<CampaignType, { bg: string; text: string; label: string }> = {
-  promotional:   { bg: '#EFF6FF', text: '#2563EB', label: 'Promotionnel' },
-  otp:           { bg: '#F0FDF4', text: '#16A34A', label: 'OTP' },
-  transactional: { bg: '#F5F3FF', text: '#7C3AED', label: 'Transactionnel' },
-  notification:  { bg: '#FFF7ED', text: '#EA580C', label: 'Notification' },
+  promotional:   { bg: '#F5F3FF', text: '#7C3AED', label: 'promotional' },
+  otp:           { bg: '#F0FDF4', text: '#16A34A', label: 'otp' },
+  transactional: { bg: '#EFF6FF', text: '#2563EB', label: 'transactional' },
+  notification:  { bg: '#FFF7ED', text: '#EA580C', label: 'notification' },
 }
 
 const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-  sent:      { bg: '#F0FDF4', text: '#16A34A', label: 'Terminé' },
-  sending:   { bg: '#EFF6FF', text: '#2563EB', label: 'En cours' },
-  queued:    { bg: '#FFF7ED', text: '#EA580C', label: 'En file' },
+  sent:      { bg: '#DBEAFE', text: '#2563EB', label: 'Terminé' },
+  sending:   { bg: '#DCFCE7', text: '#16A34A', label: 'Actif' },
+  queued:    { bg: '#DCFCE7', text: '#16A34A', label: 'Actif' },
   draft:     { bg: '#F9FAFB', text: '#6B7280', label: 'Brouillon' },
   scheduled: { bg: '#F5F3FF', text: '#7C3AED', label: 'Programmé' },
   failed:    { bg: '#FEF2F2', text: '#DC2626', label: 'Échoué' },
   cancelled: { bg: '#F9FAFB', text: '#9CA3AF', label: 'Annulé' },
+}
+
+const TAB_ICONS: Record<string, typeof MessageSquare> = {
+  'Campagnes A2P': MessageSquare,
+  'Fournisseurs':  Building2,
+  'Conformité':    Shield,
 }
 
 const TYPE_FILTERS: { key: string; label: string }[] = [
@@ -47,6 +57,7 @@ export default function SmsA2pPage() {
   const [loading, setLoading]         = useState(true)
   const [search, setSearch]           = useState('')
   const [typeFilter, setTypeFilter]   = useState('')
+  const [showTypeFilters, setShowTypeFilters] = useState(false)
   const [page, setPage]               = useState(1)
   const [total, setTotal]             = useState(0)
   const [lastPage, setLastPage]       = useState(1)
@@ -77,6 +88,42 @@ export default function SmsA2pPage() {
   )
 
   function fmtNum(n: number) { return n.toLocaleString('fr-FR') }
+
+  async function handleDelete(c: SmsCampaign) {
+    if (!window.confirm(`Supprimer la campagne "${c.name}" ?`)) return
+    try {
+      await smsService.deleteCampaign(c.id)
+      setCampaigns(prev => prev.filter(x => x.id !== c.id))
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur lors de la suppression')
+    }
+  }
+
+  function handleExport() {
+    if (filtered.length === 0) return
+    const sep = ';'
+    const header = ['ID', 'Campagne', 'Type', 'Émetteur', 'Envoyés', 'Livrés', 'Échoués', 'Coût', 'Statut', 'Date']
+    const rows = filtered.map(c => [
+      c.id,
+      `"${c.name.replace(/"/g, '""')}"`,
+      c.campaign_type,
+      c.sender_id || '',
+      c.total_sent,
+      c.total_delivered,
+      c.total_failed,
+      c.total_cost != null ? Number(c.total_cost).toFixed(2) : '',
+      c.status,
+      new Date(c.sent_at ?? c.created_at).toLocaleDateString('fr-FR'),
+    ])
+    const csv = [header.join(sep), ...rows.map(r => r.join(sep))].join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `campagnes-a2p-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   function pageNums(cur: number, last: number): number[] {
     const start = Math.max(1, Math.min(cur - 2, last - 4))
@@ -162,30 +209,47 @@ export default function SmsA2pPage() {
           ))}
         </div>
 
-        {/* Tabs */}
-        <div className="mb-4 flex gap-0 border-b border-gray-200">
-          {TABS.map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`px-5 py-3 text-[13px] font-semibold transition-colors ${activeTab === tab ? 'border-b-2 border-[#F4511E] text-[#F4511E]' : 'text-gray-500 hover:text-gray-700'}`}>
-              {tab}
-            </button>
-          ))}
+        {/* Tabs — pills avec icônes (maquette) */}
+        <div className="mb-4 rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+          <div className="flex flex-wrap gap-2">
+            {TABS.map(tab => {
+              const Icon = TAB_ICONS[tab] ?? MessageSquare
+              const active = activeTab === tab
+              return (
+                <button key={tab} onClick={() => setActiveTab(tab)}
+                  className={`flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-semibold transition-colors ${active ? 'bg-[#F4511E] text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                  <Icon size={15} /> {tab}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         {/* ── Onglet Campagnes A2P ── */}
         {activeTab === 'Campagnes A2P' && (
           <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-            <div className="flex flex-wrap items-center gap-2 border-b border-gray-50 px-5 py-3">
-              {/* Recherche */}
-              <div className="flex flex-1 min-w-[180px] items-center gap-2 rounded-xl bg-[#FFEEE6] px-3 py-2 ring-1 ring-orange-200">
-                <Search size={13} className="text-orange-300 shrink-0" />
+            {/* Header maquette : titre + recherche orange + filtre + Exporter */}
+            <div className="flex flex-wrap items-center gap-3 px-5 py-4">
+              <h3 className="text-[16px] font-bold text-[#1F2937] mr-auto">Campagnes SMS A2P</h3>
+              <div className="flex min-w-[200px] items-center gap-2 rounded-full bg-[#F4511E] px-4 py-2.5">
+                <Search size={13} className="shrink-0 text-white/70" />
                 <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Rechercher une campagne..."
-                  className="flex-1 bg-transparent text-[12px] text-[#1F2937] outline-none placeholder-orange-300"
+                  placeholder="Rechercher..."
+                  className="flex-1 bg-transparent text-[12px] text-white outline-none placeholder-white/60"
                 />
               </div>
-              {/* Filtre type */}
-              <div className="flex gap-1 flex-wrap">
+              <button onClick={() => setShowTypeFilters(f => !f)} title="Filtrer par type"
+                className={`rounded-full border p-2.5 transition-colors ${showTypeFilters || typeFilter ? 'border-[#F4511E] text-[#F4511E] bg-orange-50' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                <Filter size={14} />
+              </button>
+              <button onClick={handleExport} disabled={filtered.length === 0}
+                className="flex items-center gap-1.5 rounded-full border border-gray-200 px-4 py-2.5 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+                <Download size={13} /> Exporter
+              </button>
+            </div>
+
+            {showTypeFilters && (
+              <div className="flex gap-1 flex-wrap px-5 pb-3">
                 {TYPE_FILTERS.map(f => (
                   <button key={f.key} onClick={() => { setTypeFilter(f.key); setPage(1) }}
                     className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${typeFilter === f.key ? 'bg-[#F4511E] text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
@@ -193,63 +257,91 @@ export default function SmsA2pPage() {
                   </button>
                 ))}
               </div>
-              <button className="flex items-center gap-1.5 rounded-lg border border-[#F4511E] px-3 py-1.5 text-[11px] font-semibold text-[#F4511E] hover:bg-orange-50 ml-auto">
-                <Download size={12} /> Exporter
-              </button>
-            </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-50 bg-gray-50/60">
-                    {['Campagne','Type','Sender ID','Envoyés','Livrés','Échoués','Statut','Date'].map(h => (
-                      <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">{h}</th>
+                  <tr className="border-b border-gray-100">
+                    {['Campagne','Type','Émetteur','Envoyés','Livrés','Échoués','Coût','Statut','Actions'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-[13px] font-bold text-[#1F2937]">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {loading && (
-                    <tr><td colSpan={8} className="py-10 text-center">
+                    <tr><td colSpan={9} className="py-10 text-center">
                       <Loader2 size={18} className="mx-auto animate-spin text-gray-300" />
                     </td></tr>
                   )}
                   {!loading && filtered.length === 0 && (
-                    <tr><td colSpan={8} className="py-10 text-center text-[12px] text-gray-400">
+                    <tr><td colSpan={9} className="py-10 text-center text-[12px] text-gray-400">
                       Aucune campagne trouvée
                     </td></tr>
                   )}
                   {!loading && filtered.map(c => {
                     const ts = TYPE_STYLE[c.campaign_type] ?? TYPE_STYLE.promotional
                     const ss = STATUS_STYLE[c.status]      ?? STATUS_STYLE.draft
-                    const delivPct = c.total_sent > 0
-                      ? Math.round((c.total_delivered / c.total_sent) * 1000) / 10
-                      : 0
+                    const canDelete = c.status === 'draft' || c.status === 'scheduled' || c.status === 'failed'
                     return (
                       <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                        <td className="px-4 py-3 max-w-[160px]">
-                          <p className="text-[12px] font-semibold text-[#1F2937] truncate">{c.name}</p>
+                        {/* Nom + date/heure (maquette) */}
+                        <td className="px-4 py-3 max-w-[200px]">
+                          <p className="text-[13px] font-bold text-[#1F2937] truncate">{c.name}</p>
+                          <p className="text-[11px] text-gray-400">
+                            {new Date(c.sent_at ?? c.created_at).toISOString().slice(0, 19).replace('T', ' ')}
+                          </p>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
+                          <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
                             style={{ backgroundColor: ts.bg, color: ts.text }}>{ts.label}</span>
                         </td>
+                        {/* Émetteur : badge orange plein (maquette) */}
                         <td className="px-4 py-3">
-                          <span className="rounded-lg bg-[#FFEEE6] px-2 py-1 text-[10px] font-bold text-[#F4511E]">
-                            {c.sender_id || '—'}
+                          {c.sender_id ? (
+                            <span className="rounded-md bg-[#F4511E] px-2 py-1 text-[10px] font-bold text-white font-mono uppercase">
+                              {c.sender_id}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-[13px] font-semibold text-[#1F2937]">{fmtNum(c.total_sent)}</td>
+                        <td className="px-4 py-3 text-[13px] font-semibold text-[#16A34A]">{fmtNum(c.total_delivered)}</td>
+                        <td className="px-4 py-3 text-[13px] font-semibold text-[#EF4444]">{fmtNum(c.total_failed)}</td>
+                        {/* Coût réel (DLR) — DECIMAL arrive en string */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {c.total_cost != null && Number(c.total_cost) > 0 ? (
+                            <span className="text-[13px] font-semibold text-[#1F2937]">
+                              {Number(c.total_cost).toFixed(2)} {c.cost_currency ?? ''}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                            style={{ backgroundColor: ss.bg, color: ss.text }}>
+                            <CheckCircle2 size={11} /> {ss.label}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-[12px] text-gray-700">{fmtNum(c.total_sent)}</td>
+                        {/* Actions (maquette : œil / stats / corbeille) */}
                         <td className="px-4 py-3">
-                          <p className="text-[12px] text-[#22C55E] font-semibold">{fmtNum(c.total_delivered)}</p>
-                          {c.total_sent > 0 && <p className="text-[10px] text-gray-400">{delivPct}%</p>}
-                        </td>
-                        <td className="px-4 py-3 text-[12px] text-[#EF4444] font-semibold">{fmtNum(c.total_failed)}</td>
-                        <td className="px-4 py-3">
-                          <span className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
-                            style={{ backgroundColor: ss.bg, color: ss.text }}>{ss.label}</span>
-                        </td>
-                        <td className="px-4 py-3 text-[11px] text-gray-400 whitespace-nowrap">
-                          {new Date(c.created_at).toLocaleDateString('fr-FR')}
+                          <div className="flex items-center gap-0.5">
+                            <button onClick={() => navigate('/app/sms/rapports')} title="Voir le rapport"
+                              className="rounded p-1.5 text-[#1F2937] hover:bg-gray-100 transition-colors">
+                              <Eye size={14} />
+                            </button>
+                            <button onClick={() => navigate('/app/sms/analytics')} title="Statistiques"
+                              className="rounded p-1.5 text-[#1F2937] hover:bg-gray-100 transition-colors">
+                              <BarChart2 size={14} />
+                            </button>
+                            <button onClick={() => canDelete && handleDelete(c)} disabled={!canDelete}
+                              title={canDelete ? 'Supprimer' : 'Suppression impossible (campagne envoyée)'}
+                              className="rounded p-1.5 text-[#DC2626] hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -279,59 +371,94 @@ export default function SmsA2pPage() {
           </div>
         )}
 
-        {/* ── Onglet Fournisseurs ── */}
+        {/* ── Onglet Fournisseurs — cartes en grille (maquette) ── */}
         {activeTab === 'Fournisseurs' && (
-          <div className="space-y-4">
-            {/* Infobip — fournisseur actif */}
-            <div className="rounded-2xl border border-[#22C55E]/30 bg-[#F0FDF4] p-5">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1D4ED8]">
-                    <span className="text-[13px] font-black text-white">IB</span>
-                  </div>
-                  <div>
-                    <p className="text-[14px] font-bold text-[#1F2937]">Infobip</p>
-                    <p className="text-[11px] text-gray-500">Agrégateur SMS principal — couverture mondiale, Cameroun & RDC</p>
-                  </div>
-                </div>
-                <span className="rounded-full bg-[#22C55E] px-2.5 py-1 text-[10px] font-bold text-white">ACTIF</span>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {[
-                  { label: 'Couverture', value: 'RDC · Cameroun · +190 pays' },
-                  { label: 'Protocole',  value: 'REST API v3' },
-                  { label: 'DLR',        value: 'Webhook temps réel' },
-                  { label: 'Sender ID',  value: 'Alphanumérique 11 car.' },
-                ].map(({ label, value }) => (
-                  <div key={label} className="rounded-xl bg-white p-3">
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-                    <p className="mt-1 text-[11px] font-semibold text-[#1F2937]">{value}</p>
-                  </div>
-                ))}
-              </div>
+          <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-[16px] font-bold text-[#1F2937]">Fournisseurs A2P</h3>
+              <button disabled title="Bientôt disponible"
+                className="flex items-center gap-1.5 rounded-xl bg-[#F4511E] px-4 py-2.5 text-[13px] font-bold text-white opacity-50 cursor-not-allowed">
+                <Plus size={14} /> Ajouter Fournisseur
+              </button>
             </div>
 
-            {/* Autres fournisseurs (non configurés) */}
-            {[
-              { name: 'AfricasTalking', desc: 'Agrégateur Afrique de l\'Est — couverture limitée (pas RDC ni Cameroun)', abbr: 'AT' },
-              { name: 'Twilio',         desc: 'SMS A2P international — US/Europe/Afrique', abbr: 'TW' },
-              { name: 'Vonage',         desc: 'API SMS entreprise — OTP & transactionnel', abbr: 'VN' },
-            ].map(f => (
-              <div key={f.name} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100">
-                    <span className="text-[11px] font-black text-gray-500">{f.abbr}</span>
-                  </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {/* Infobip — le seul fournisseur réellement actif */}
+              <div className="rounded-2xl border border-gray-100 p-5 shadow-sm">
+                <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-[13px] font-bold text-[#1F2937]">{f.name}</p>
-                    <p className="text-[11px] text-gray-400">{f.desc}</p>
+                    <p className="text-[15px] font-bold text-[#1F2937]">Infobip</p>
+                    <p className="text-[12px] text-gray-500">RDC · Cameroun · +190 pays</p>
+                  </div>
+                  <span className="rounded-full bg-[#DCFCE7] px-2.5 py-1 text-[10px] font-bold text-[#16A34A]">Actif</span>
+                </div>
+                <div className="mt-4 space-y-2.5">
+                  {[
+                    { label: 'Type:',      value: 'Aggregator' },
+                    { label: 'Protocole:', value: 'REST API v3' },
+                    { label: 'Livraison:', value: stats?.deliveryRate != null ? `${stats.deliveryRate}%` : '—', green: true },
+                    { label: 'Coût/SMS:',  value: 'Selon destination' },
+                  ].map(({ label, value, green }) => (
+                    <div key={label} className="flex items-center justify-between">
+                      <span className="text-[12px] text-gray-500">{label}</span>
+                      <span className={`text-[12px] font-bold ${green ? 'text-[#16A34A]' : 'text-[#1F2937]'}`}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex items-center gap-2 border-t border-gray-100 pt-4">
+                  <button onClick={() => navigate('/app/sms/identifiants')}
+                    className="flex-1 rounded-xl bg-[#F4511E] py-2.5 text-[13px] font-bold text-white hover:bg-[#d9400f]">
+                    Configurer
+                  </button>
+                  <button onClick={() => navigate('/app/sms/rapports')} title="Statistiques"
+                    className="rounded-xl border border-gray-200 p-2.5 text-gray-600 hover:bg-gray-50">
+                    <BarChart2 size={15} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Connexions directes opérateurs (SMPP) — pas encore prêtes */}
+              {[
+                { name: 'MTN Cameroun',  country: 'Cameroun' },
+                { name: 'Orange RDC',    country: 'RD Congo' },
+              ].map(f => (
+                <div key={f.name} className="rounded-2xl border border-gray-100 p-5 shadow-sm opacity-80">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-[15px] font-bold text-[#1F2937]">{f.name}</p>
+                      <p className="text-[12px] text-gray-500">{f.country}</p>
+                    </div>
+                    <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold text-gray-500">Pas encore prêt</span>
+                  </div>
+                  <div className="mt-4 space-y-2.5">
+                    {[
+                      { label: 'Type:',      value: 'Direct (SMPP)' },
+                      { label: 'Débit:',     value: '—' },
+                      { label: 'Livraison:', value: '—' },
+                      { label: 'Coût/SMS:',  value: '—' },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="flex items-center justify-between">
+                        <span className="text-[12px] text-gray-500">{label}</span>
+                        <span className="text-[12px] font-bold text-[#1F2937]">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex items-center gap-2 border-t border-gray-100 pt-4">
+                    <button disabled title="Connexion SMPP directe — pas encore disponible"
+                      className="flex-1 cursor-not-allowed rounded-xl bg-gray-200 py-2.5 text-[13px] font-bold text-gray-500">
+                      Bientôt disponible
+                    </button>
+                    <button disabled className="cursor-not-allowed rounded-xl border border-gray-200 p-2.5 text-gray-300">
+                      <BarChart2 size={15} />
+                    </button>
                   </div>
                 </div>
-                <button className="rounded-xl border border-gray-200 px-3 py-2 text-[11px] font-semibold text-gray-600 hover:bg-gray-50">
-                  Configurer
-                </button>
-              </div>
-            ))}
+              ))}
+            </div>
+
+            <p className="mt-4 text-[11px] text-gray-400">
+              Les connexions directes opérateurs (SMPP) seront disponibles prochainement. L'envoi passe actuellement par Infobip.
+            </p>
           </div>
         )}
 

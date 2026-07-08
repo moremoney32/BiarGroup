@@ -70,6 +70,19 @@ interface RapportsData {
   engagementRate: { day: string; ouverture: number; clic: number; conversion: number }[]
 }
 
+interface OperatorStat { operator: string; delivered: number; failed: number }
+
+const OPERATOR_COLORS: Record<string, string> = {
+  Vodacom:  '#EF4444',
+  Airtel:   '#F59E0B',
+  Orange:   '#F97316',
+  Africell: '#3B82F6',
+  MTN:      '#FACC15',
+  Nexttel:  '#8B5CF6',
+  Camtel:   '#10B981',
+}
+const OP_FALLBACK_COLORS = ['#3B82F6', '#EF4444', '#F59E0B', '#8B5CF6', '#10B981', '#EC4899']
+
 // Calcule from/to ISO depuis le nombre de jours
 function periodRange(days: number): { from?: string; to?: string } {
   if (days === 0) return {}
@@ -182,6 +195,7 @@ export default function SmsRapportsCampagnesPage() {
   const [lastPage, setLastPage]   = useState(1)
   const [total, setTotal]         = useState(0)
   const [menuOpen, setMenuOpen]   = useState<number | null>(null)
+  const [byOperator, setByOp]     = useState<OperatorStat[]>([])
   const LIMIT = 10
 
   const fetchAll = useCallback(async (p: number, days: string) => {
@@ -189,11 +203,12 @@ export default function SmsRapportsCampagnesPage() {
     try {
       const range = periodRange(Number(days))
       const periodParam = days === '7' ? '7j' : days === '90' ? '90j' : '30j'
-      const [campaignRes, statsRes, kpisRes, rapportsRes] = await Promise.all([
+      const [campaignRes, statsRes, kpisRes, rapportsRes, dlrRes] = await Promise.all([
         smsService.getCampaigns({ page: p, limit: LIMIT, ...range }),
         smsService.getAnalyticsOverview(),
         api.get<{ data: AnalyticsKpis }>('/sms/analytics/kpis').catch(() => null),
         api.get<{ data: RapportsData }>(`/sms/analytics/rapports?period=${periodParam}`).catch(() => null),
+        api.get<{ data: { byOperator: OperatorStat[] } }>('/sms/analytics/dlr?limit=1').catch(() => null),
       ])
       setCampaigns(campaignRes.campaigns)
       setLastPage(campaignRes.meta.lastPage)
@@ -201,6 +216,7 @@ export default function SmsRapportsCampagnesPage() {
       setStats(statsRes)
       if (kpisRes) setKpis(kpisRes.data)
       if (rapportsRes) setRapports(rapportsRes.data)
+      if (dlrRes?.data.byOperator) setByOp(dlrRes.data.byOperator)
     } catch {
       setCampaigns([])
     } finally {
@@ -421,28 +437,50 @@ export default function SmsRapportsCampagnesPage() {
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-[14px] font-bold text-[#1F2937]">Distribution par Opérateur</h3>
-                <p className="mb-3 text-[11px] text-gray-400">Répartition des envois</p>
+                <p className="mb-3 text-[11px] text-gray-400">Répartition des envois (DLR reçus)</p>
               </div>
             </div>
-            <div className="flex h-[200px] flex-col items-center justify-center gap-3 rounded-xl bg-gray-50 px-4 text-center">
-              <div className="flex items-center gap-4">
-                {[
-                  { name: 'Vodacom',  color: '#EF4444' },
-                  { name: 'Airtel',   color: '#F59E0B' },
-                  { name: 'Orange',   color: '#F97316' },
-                  { name: 'Africell', color: '#3B82F6' },
-                ].map(op => (
-                  <div key={op.name} className="flex flex-col items-center gap-1">
-                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: op.color }} />
-                    <span className="text-[9px] text-gray-500">{op.name}</span>
+            {byOperator.length > 0 ? (() => {
+              const pie = byOperator.map((op, i) => ({
+                name:  op.operator,
+                value: op.delivered + op.failed,
+                color: OPERATOR_COLORS[op.operator] ?? OP_FALLBACK_COLORS[i % OP_FALLBACK_COLORS.length],
+              }))
+              const totalOp = pie.reduce((s, o) => s + o.value, 0)
+              return (
+                <div className="flex items-center gap-4">
+                  <ResponsiveContainer width="55%" height={200}>
+                    <PieChart>
+                      <Pie data={pie} cx="50%" cy="50%" innerRadius={52} outerRadius={82}
+                        dataKey="value" stroke="none" paddingAngle={2}>
+                        {pie.map((e, i) => <Cell key={i} fill={e.color} />)}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => [v, 'SMS']} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="flex-1 space-y-2">
+                    {pie.map(({ name, value, color }) => (
+                      <div key={name} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+                          <span className="text-[11px] text-gray-600">{name}</span>
+                        </div>
+                        <span className="text-[12px] font-bold text-[#1F2937]">
+                          {totalOp > 0 ? Math.round((value / totalOp) * 100) : 0}%
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+              )
+            })() : (
+              <div className="flex h-[200px] flex-col items-center justify-center gap-2 rounded-xl bg-gray-50 px-4 text-center">
+                <p className="text-[11px] font-semibold text-gray-400">Aucun accusé de livraison pour l'instant</p>
+                <p className="text-[10px] text-gray-400 max-w-[240px]">
+                  La répartition apparaîtra automatiquement dès les premiers DLR reçus
+                </p>
               </div>
-              <p className="text-[11px] font-semibold text-gray-400">Disponible prochainement</p>
-              <p className="text-[10px] text-gray-400 max-w-[240px]">
-                Nécessite l'analyse des préfixes téléphoniques depuis les DLR Infobip
-              </p>
-            </div>
+            )}
           </div>
         </div>
 
@@ -624,8 +662,16 @@ export default function SmsRapportsCampagnesPage() {
                           <span className="text-[11px] text-gray-400">0</span>
                         )}
                       </td>
-                      {/* Coût — agrégat par campagne dès activation des DLR */}
-                      <td className="px-4 py-3 text-[11px] text-gray-400">—</td>
+                      {/* Coût réel — somme des coûts DLR (DECIMAL MySQL arrive en string) */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {c.total_cost != null && Number(c.total_cost) > 0 ? (
+                          <span className="text-[12px] font-semibold text-[#1F2937]">
+                            {Number(c.total_cost).toFixed(2)} {c.cost_currency ?? ''}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-gray-400">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="relative">
                           <button

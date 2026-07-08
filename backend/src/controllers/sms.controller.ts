@@ -474,6 +474,15 @@ export const smsController = {
     }
   },
 
+  async getContactsStats(req: Request, res: Response): Promise<void> {
+    try {
+      const stats = await smsService.getContactsStats(req.tenantId!)
+      sendSuccess(res, stats)
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', err instanceof Error ? err.message : 'Erreur serveur')
+    }
+  },
+
   async createContactList(req: Request, res: Response): Promise<void> {
     try {
       const parsed = z.object({

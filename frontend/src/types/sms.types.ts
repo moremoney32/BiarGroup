@@ -39,6 +39,8 @@ export interface SmsCampaign {
   total_undelivered: number // DLR non livré
   total_clicks?: number        // clics réels des liens courts liés (endpoint /sms/r/:code)
   total_unique_clicks?: number // clics uniques (1 par personne/jour — hash IP salé)
+  total_cost?: string | number | null // somme des coûts DLR — DECIMAL MySQL arrive en string
+  cost_currency?: string | null
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -136,6 +138,8 @@ export interface SmsListContact {
   opted_out: boolean
   opted_out_at: string | null
   created_at: string
+  msg_sent?: number      // messages envoyés à ce numéro (stats DLR)
+  msg_delivered?: number // messages délivrés à ce numéro
 }
 
 // ── Liens courts ──────────────────────────────────────────────

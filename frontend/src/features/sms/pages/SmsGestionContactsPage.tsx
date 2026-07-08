@@ -5,7 +5,7 @@ import {
   ChevronDown, X, List, Trash2,
   Send, AlertTriangle, Users, Loader2, PhoneOff, Phone,
   Database, CheckSquare, Square, CheckCircle2,
-  Filter, Pencil, Clock,
+  Filter, Pencil, Clock, MapPin,
 } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { smsService } from '../../../services/sms.service'
@@ -827,14 +827,15 @@ export default function SmsGestionContactsPage() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-50 bg-gray-50/60">
-                    <th className="px-4 py-2.5 text-left">
+                  {/* Header lavande clair (maquette) */}
+                  <tr className="border-b border-gray-100 bg-[#F5F3FF]">
+                    <th className="px-4 py-3 text-left">
                       <input type="checkbox"
                         checked={selected.length === contacts.length && contacts.length > 0}
                         onChange={toggleAll} className="rounded" />
                     </th>
                     {['Contact', 'Téléphone', 'Localisation', 'Tags', 'Statut', 'Performance', 'Actions'].map(h => (
-                      <th key={h} className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">{h}</th>
+                      <th key={h} className="px-4 py-3 text-left text-[13px] font-bold text-[#1F2937]">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -870,10 +871,21 @@ export default function SmsGestionContactsPage() {
                         </div>
                       </td>
 
-                      <td className="px-4 py-3 text-[12px] text-gray-700 whitespace-nowrap font-mono">{c.phone}</td>
+                      {/* Téléphone avec icône (maquette) */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <Phone size={13} className="shrink-0 text-gray-400" />
+                          <span className="text-[12px] text-gray-700 font-mono">{c.phone}</span>
+                        </div>
+                      </td>
 
                       {/* Localisation — dispo quand le backend stockera ville/pays */}
-                      <td className="px-4 py-3 text-[11px] text-gray-400">—</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <MapPin size={13} className="shrink-0 text-gray-300" />
+                          <span className="text-[11px] text-gray-400">—</span>
+                        </div>
+                      </td>
 
                       {/* Tags — dispo quand le backend stockera les tags contact */}
                       <td className="px-4 py-3 text-[11px] text-gray-400">—</td>
@@ -890,22 +902,41 @@ export default function SmsGestionContactsPage() {
                         )}
                       </td>
 
-                      {/* Performance — délivrabilité/ouverture/clic par contact à venir */}
-                      <td className="px-4 py-3 text-[11px] text-gray-400 whitespace-nowrap">—</td>
+                      {/* Performance (maquette : 3 lignes) — délivrabilité réelle depuis les DLR */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="space-y-0.5 text-[11px]">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-500">Délivrabilité:</span>
+                            {c.msg_sent && c.msg_sent > 0 ? (
+                              <span className="font-bold text-[#16A34A]">
+                                {Math.round(((c.msg_delivered ?? 0) / c.msg_sent) * 1000) / 10}%
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-500">Ouverture:</span>
+                            <span className="text-gray-400" title="Non trackable en SMS — disponible avec RCS">—</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-500">Clic:</span>
+                            <span className="text-gray-400" title="Les clics sont trackés par lien, pas par contact">—</span>
+                          </div>
+                        </div>
+                      </td>
 
+                      {/* Actions (maquette : crayon / historique / corbeille) */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-0.5">
-                          <button className="rounded p-1.5 text-[#3B82F6] hover:bg-blue-50 transition-colors" title="Envoyer SMS individuel">
-                            <Send size={13} />
+                          <button className="rounded p-1.5 text-[#1F2937] opacity-40 cursor-not-allowed" title="Modifier — bientôt disponible" disabled>
+                            <Pencil size={14} />
                           </button>
-                          <button className="rounded p-1.5 text-gray-300 cursor-not-allowed" title="Modifier — bientôt disponible" disabled>
-                            <Pencil size={13} />
+                          <button className="rounded p-1.5 text-[#1F2937] opacity-40 cursor-not-allowed" title="Historique — bientôt disponible" disabled>
+                            <Clock size={14} />
                           </button>
-                          <button className="rounded p-1.5 text-gray-300 cursor-not-allowed" title="Historique — bientôt disponible" disabled>
-                            <Clock size={13} />
-                          </button>
-                          <button className="rounded p-1.5 text-gray-300 cursor-not-allowed" title="Supprimer — bientôt disponible" disabled>
-                            <Trash2 size={13} />
+                          <button className="rounded p-1.5 text-[#DC2626] opacity-40 cursor-not-allowed" title="Supprimer — bientôt disponible" disabled>
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </td>

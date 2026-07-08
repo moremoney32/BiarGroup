@@ -189,7 +189,11 @@ export const smsService = {
               (SELECT COALESCE(SUM(l.clicks), 0) FROM sms_short_links l WHERE l.campaign_id = c.id) AS total_clicks,
               (SELECT COUNT(DISTINCT k.ip_hash) FROM sms_link_clicks k
                JOIN sms_short_links l2 ON l2.id = k.link_id
-               WHERE l2.campaign_id = c.id) AS total_unique_clicks
+               WHERE l2.campaign_id = c.id) AS total_unique_clicks,
+              (SELECT COALESCE(SUM(m.cost), 0) FROM sms_messages m
+               WHERE m.campaign_id = c.id AND m.deleted_at IS NULL) AS total_cost,
+              (SELECT MAX(m.cost_currency) FROM sms_messages m
+               WHERE m.campaign_id = c.id AND m.cost_currency IS NOT NULL AND m.deleted_at IS NULL) AS cost_currency
        FROM sms_campaigns c ${where} ORDER BY c.created_at DESC LIMIT ${limit} OFFSET ${offset}`,
       params
     )
@@ -1154,16 +1158,47 @@ export const smsService = {
       params.push(opts.optedOut ? 1 : 0)
     }
 
+    // msg_sent / msg_delivered : stats réelles par numéro (DLR) pour la colonne Performance
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT * FROM sms_list_contacts ${where} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
-      params
+      `SELECT c.*,
+              (SELECT COUNT(*) FROM sms_messages m
+               WHERE m.phone = c.phone AND m.tenant_id = ? AND m.deleted_at IS NULL
+                 AND m.status IN ('sent','delivered','undelivered','failed')) AS msg_sent,
+              (SELECT COUNT(*) FROM sms_messages m
+               WHERE m.phone = c.phone AND m.tenant_id = ? AND m.deleted_at IS NULL
+                 AND m.status = 'delivered') AS msg_delivered
+       FROM sms_list_contacts c ${where} ORDER BY c.created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+      [tenantId, tenantId, ...params]
     )
     const [[{ total }]] = await pool.execute<RowDataPacket[]>(
-      `SELECT COUNT(*) as total FROM sms_list_contacts ${where}`, params
+      `SELECT COUNT(*) as total FROM sms_list_contacts c ${where}`, params
     )
     // Normalise opted_out : MySQL retourne TINYINT (0/1), le type attend boolean
-    const contacts = (rows as RowDataPacket[]).map(r => ({ ...r, opted_out: !!r.opted_out })) as unknown as SmsListContact[]
+    const contacts = (rows as RowDataPacket[]).map(r => ({
+      ...r,
+      opted_out: !!r.opted_out,
+      msg_sent: Number(r.msg_sent) || 0,
+      msg_delivered: Number(r.msg_delivered) || 0,
+    })) as unknown as SmsListContact[]
     return { contacts, total: Number(total) }
+  },
+
+  // Stats globales contacts du tenant (KPI onglet Contacts de SMS en Masse)
+  async getContactsStats(tenantId: number): Promise<{ total: number; active: number; optedOut: number }> {
+    const [[row]] = await pool.execute<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(c.opted_out = 0), 0) AS active,
+              COALESCE(SUM(c.opted_out = 1), 0) AS optedOut
+       FROM sms_list_contacts c
+       JOIN sms_contact_lists l ON l.id = c.list_id
+       WHERE l.tenant_id = ? AND l.deleted_at IS NULL`,
+      [tenantId]
+    )
+    return {
+      total:    Number(row.total)    || 0,
+      active:   Number(row.active)   || 0,
+      optedOut: Number(row.optedOut) || 0,
+    }
   },
 
   // Opt-out d'un contact (réponse STOP reçue via SMPP MO ou déclaration manuelle)

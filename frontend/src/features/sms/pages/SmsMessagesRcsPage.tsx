@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Send, Image, Video, Plus, X, MessageSquare, Eye, BookOpen, MousePointerClick } from 'lucide-react'
+import { Send, Image, Video, Plus, X, MessageSquare, Eye, BookOpen, MousePointerClick, ThumbsUp, Settings } from 'lucide-react'
 import DashboardFooter from '../../../components/layout/DashboardFooter'
 import { motion } from 'framer-motion'
 
@@ -207,10 +207,78 @@ export default function SmsMessagesRcsPage() {
           </div>
         )}
 
-        {activeTab !== 'Composer' && (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-            <p className="text-[14px] font-semibold text-gray-500">{activeTab}</p>
-            <p className="mt-1 text-[12px]">Cette section sera disponible prochainement</p>
+        {/* ── Onglet Templates (maquette) — démo RCS ── */}
+        {activeTab === 'Templates' && (
+          <div>
+            <button className="mb-5 flex items-center gap-2 rounded-xl bg-[#F4511E]/80 px-5 py-2.5 text-[13px] font-bold text-white hover:bg-[#F4511E]">
+              <Plus size={14} /> Nouveau template
+            </button>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {[
+                { name: 'Promotion Produit',      desc: 'Template pour promotion',  medias: 2, boutons: 3 },
+                { name: 'Confirmation Commande',  desc: 'Accusé de réception',      medias: 1, boutons: 2 },
+                { name: 'Newsletter',             desc: 'Communication régulière',  medias: 1, boutons: 4 },
+              ].map(t => (
+                <div key={t.name} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                  <h3 className="text-[16px] font-bold text-[#1F2937]">{t.name}</h3>
+                  <p className="mt-2 text-[13px] text-gray-600">{t.desc}</p>
+                  <div className="mt-3 flex items-center gap-4 text-[12px] text-gray-600">
+                    <span className="flex items-center gap-1.5"><Image size={14} /> {t.medias} médias</span>
+                    <span className="flex items-center gap-1.5"><ThumbsUp size={14} /> {t.boutons} boutons</span>
+                  </div>
+                  <div className="mt-4 flex items-center gap-2">
+                    <button className="flex-1 rounded-xl bg-[#F4511E] py-2.5 text-[13px] font-bold text-white hover:bg-[#d9400f]">
+                      Utiliser
+                    </button>
+                    <button className="rounded-xl p-2 text-gray-500 hover:bg-gray-100" aria-label="Paramètres du template">
+                      <Settings size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Onglet Analytics (maquette) — démo RCS ── */}
+        {activeTab === 'Analytics' && (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+              <h3 className="mb-5 text-[16px] font-bold text-[#1F2937]">Taux d'engagement</h3>
+              <div className="space-y-5">
+                {[
+                  { label: 'Taux de livraison', value: 98, color: '#BFDBFE' },
+                  { label: 'Taux de lecture',   value: 89, color: '#3B82F6' },
+                  { label: 'Taux de clic',      value: 34, color: '#8B5CF6' },
+                ].map(({ label, value, color }) => (
+                  <div key={label}>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-[13px] text-gray-700">{label}</span>
+                      <span className="text-[15px] font-bold text-[#1F2937]">{value}%</span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                      <div className="h-full rounded-full" style={{ width: `${value}%`, backgroundColor: color }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+              <h3 className="mb-5 text-[16px] font-bold text-[#1F2937]">Performances</h3>
+              <div className="space-y-3">
+                {[
+                  { label: 'Meilleur template',      value: 'Newsletter',     color: '#16A34A' },
+                  { label: 'Bouton le plus cliqué',  value: 'En savoir plus', color: '#2563EB' },
+                  { label: 'Heure optimale',         value: '10h-12h',        color: '#7C3AED' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="flex items-center justify-between rounded-xl bg-[#F8A583]/60 px-4 py-4">
+                    <span className="text-[13px] text-[#1F2937]">{label}</span>
+                    <span className="text-[14px] font-bold" style={{ color }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
